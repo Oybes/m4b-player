@@ -17,7 +17,23 @@ const libraryCount = document.getElementById("library-count");
 const pageTitle = document.getElementById("page-title");
 const headerSiteName = document.getElementById("header-site-name");
 
+// Search, Filter & Sort Toolbar
+const libraryToolbar = document.querySelector(".library-toolbar");
+const librarySearch = document.getElementById("library-search");
+const btnSearchClear = document.getElementById("btn-search-clear");
+const filterChips = document.querySelectorAll(".filter-chip");
+const filterChipUploads = document.getElementById("filter-chip-uploads");
+const librarySort = document.getElementById("library-sort");
+const searchEmptyState = document.getElementById("search-empty-state");
+const searchEmptyText = document.getElementById("search-empty-text");
+const btnResetFilters = document.getElementById("btn-reset-filters");
+
+let currentSearchQuery = "";
+let currentFilter = "all";
+let currentSort = "recent";
+
 // Header User Profile, Admin & Upload
+
 const userProfile = document.getElementById("user-profile");
 const userDisplayName = document.getElementById("user-display-name");
 const userRoleBadge = document.getElementById("user-role-badge");
@@ -313,9 +329,56 @@ async function loadLibrary() {
   }
 }
 
+function getFilteredAndSortedBooks() {
+  let result = [...books];
+
+  // 1. Status Filter
+  if (currentFilter === "in-progress") {
+    result = result.filter(b => b.progress && b.progress.position > 0 && !b.progress.completed);
+  } else if (currentFilter === "unheard") {
+    result = result.filter(b => !b.progress || b.progress.position === 0);
+  } else if (currentFilter === "completed") {
+    result = result.filter(b => b.progress && b.progress.completed);
+  } else if (currentFilter === "uploads") {
+    if (currentUser) {
+      result = result.filter(b => b.uploaded_by === currentUser.id);
+    }
+  }
+
+  // 2. Text Search Query
+  if (currentSearchQuery) {
+    const q = currentSearchQuery.toLowerCase();
+    result = result.filter(b => {
+      const title = (b.title || "").toLowerCase();
+      const author = (b.author || "").toLowerCase();
+      const narrator = (b.narrator || "").toLowerCase();
+      const desc = (b.description || "").toLowerCase();
+      return title.includes(q) || author.includes(q) || narrator.includes(q) || desc.includes(q);
+    });
+  }
+
+  // 3. Sorting
+  if (currentSort === "title-asc") {
+    result.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+  } else if (currentSort === "title-desc") {
+    result.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
+  } else if (currentSort === "author-asc") {
+    result.sort((a, b) => (a.author || "Unknown").localeCompare(b.author || "Unknown"));
+  } else if (currentSort === "duration-desc") {
+    result.sort((a, b) => (b.duration || 0) - (a.duration || 0));
+  } else if (currentSort === "duration-asc") {
+    result.sort((a, b) => (a.duration || 0) - (b.duration || 0));
+  }
+  // 'recent' uses the default DB order (last_played_at / updated_at DESC)
+
+  return result;
+}
+
 function renderLibrary() {
   bookGrid.innerHTML = "";
   if (books.length === 0) {
+    if (libraryToolbar) libraryToolbar.style.display = "none";
+    if (searchEmptyState) searchEmptyState.style.display = "none";
     emptyState.style.display = "block";
     const h3 = emptyState.querySelector("h3");
     const p = emptyState.querySelector("p");
@@ -332,11 +395,47 @@ function renderLibrary() {
       if (h3) h3.textContent = "No audiobooks found";
       if (p) p.innerHTML = "Place your <code>.m4b</code> files in your configured audiobooks folder and click Rescan, or click Upload above.";
     }
+    libraryCount.textContent = "0 books";
     return;
   }
   emptyState.style.display = "none";
+  if (libraryToolbar) libraryToolbar.style.display = "flex";
 
-  books.forEach(book => {
+  // Check if current user has any uploaded books
+  if (filterChipUploads) {
+    const hasUploads = currentUser && books.some(b => b.uploaded_by === currentUser.id);
+    filterChipUploads.style.display = hasUploads ? "inline-block" : "none";
+  }
+
+  const filteredBooks = getFilteredAndSortedBooks();
+
+  // Dynamic Counter
+  if (currentSearchQuery || currentFilter !== "all") {
+    libraryCount.textContent = `Showing ${filteredBooks.length} of ${books.length} book${books.length === 1 ? "" : "s"}`;
+  } else {
+    libraryCount.textContent = `${books.length} book${books.length === 1 ? "" : "s"}`;
+  }
+
+  // Handle Search / Filter Empty State
+  if (filteredBooks.length === 0) {
+    bookGrid.style.display = "none";
+    if (searchEmptyState) {
+      searchEmptyState.style.display = "block";
+      if (searchEmptyText) {
+        if (currentSearchQuery) {
+          searchEmptyText.textContent = `No audiobooks match "${currentSearchQuery}".`;
+        } else {
+          searchEmptyText.textContent = `No audiobooks match the "${currentFilter}" filter.`;
+        }
+      }
+    }
+    return;
+  }
+
+  bookGrid.style.display = "grid";
+  if (searchEmptyState) searchEmptyState.style.display = "none";
+
+  filteredBooks.forEach(book => {
     const card = document.createElement("div");
     card.className = `book-card ${playingBook && playingBook.id === book.id ? "active" : ""}`;
     card.id = `card-${book.id}`;
@@ -379,6 +478,7 @@ function renderLibrary() {
     bookGrid.appendChild(card);
   });
 }
+
 
 // -------------------------------------------------------------
 // DECOUPLED BOOK DETAILS MODAL
@@ -1322,9 +1422,87 @@ if (btnScan) {
   });
 }
 
+// -------------------------------------------------------------
+// SEARCH, FILTER & SORT EVENT LISTENERS
+// -------------------------------------------------------------
+if (librarySearch) {
+  librarySearch.addEventListener("input", () => {
+    currentSearchQuery = librarySearch.value.trim();
+    if (btnSearchClear) {
+      btnSearchClear.style.display = currentSearchQuery ? "block" : "none";
+    }
+    renderLibrary();
+  });
+
+  librarySearch.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      librarySearch.value = "";
+      currentSearchQuery = "";
+      if (btnSearchClear) btnSearchClear.style.display = "none";
+      librarySearch.blur();
+      renderLibrary();
+    }
+  });
+}
+
+if (btnSearchClear) {
+  btnSearchClear.addEventListener("click", () => {
+    librarySearch.value = "";
+    currentSearchQuery = "";
+    btnSearchClear.style.display = "none";
+    librarySearch.focus();
+    renderLibrary();
+  });
+}
+
+if (filterChips) {
+  filterChips.forEach(chip => {
+    chip.addEventListener("click", () => {
+      filterChips.forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      currentFilter = chip.dataset.filter || "all";
+      renderLibrary();
+    });
+  });
+}
+
+if (librarySort) {
+  librarySort.addEventListener("change", () => {
+    currentSort = librarySort.value || "recent";
+    renderLibrary();
+  });
+}
+
+if (btnResetFilters) {
+  btnResetFilters.addEventListener("click", () => {
+    currentSearchQuery = "";
+    currentFilter = "all";
+    currentSort = "recent";
+    if (librarySearch) librarySearch.value = "";
+    if (btnSearchClear) btnSearchClear.style.display = "none";
+    if (librarySort) librarySort.value = "recent";
+    if (filterChips) {
+      filterChips.forEach(c => {
+        if (c.dataset.filter === "all") c.classList.add("active");
+        else c.classList.remove("active");
+      });
+    }
+    renderLibrary();
+  });
+}
+
 // Keyboard shortcuts
 window.addEventListener("keydown", (e) => {
   if (["input", "textarea", "select"].includes(e.target.tagName.toLowerCase())) return;
+
+  if (e.key === "/") {
+    e.preventDefault();
+    if (librarySearch) {
+      librarySearch.focus();
+      librarySearch.select();
+    }
+    return;
+  }
 
   if (e.code === "Space") {
     e.preventDefault();
@@ -1332,6 +1510,7 @@ window.addEventListener("keydown", (e) => {
   } else if (e.code === "ArrowLeft") {
     e.preventDefault();
     btnSkipBack.click();
+
   } else if (e.code === "ArrowRight") {
     e.preventDefault();
     btnSkipForward.click();

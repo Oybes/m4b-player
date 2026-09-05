@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="apple-touch-icon" sizes="512x512" href="/static/icon-512.png">
   <link rel="manifest" href="/static/manifest.json">
-  <link rel="stylesheet" href="/static/style.css?v=2.3">
+  <link rel="stylesheet" href="/static/style.css?v=2.4">
 </head>
 <body>
 
@@ -75,9 +75,51 @@
 
   <!-- Main Content -->
   <main>
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
       <h2 class="section-title" style="margin-bottom: 0;">Audiobook Library</h2>
       <span id="library-count" style="font-size: 0.85rem; color: var(--text-muted);">0 books</span>
+    </div>
+
+    <!-- Toolbar: Search, Filters, Sort -->
+    <div class="library-toolbar">
+      <!-- Search Bar -->
+      <div class="search-box">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="library-search" class="search-input" placeholder="Search title, author, narrator... (Press '/' to focus)" autocomplete="off">
+        <button id="btn-search-clear" class="btn-search-clear" style="display: none;" title="Clear search">&times;</button>
+      </div>
+
+      <!-- Filters & Sort Group -->
+      <div class="toolbar-controls">
+        <!-- Filter Chips -->
+        <div class="filter-chips">
+          <button class="filter-chip active" data-filter="all">All</button>
+          <button class="filter-chip" data-filter="in-progress">In Progress</button>
+          <button class="filter-chip" data-filter="unheard">Unheard</button>
+          <button class="filter-chip" data-filter="completed">Completed</button>
+          <button class="filter-chip" id="filter-chip-uploads" data-filter="uploads" style="display: none;">My Uploads</button>
+        </div>
+
+        <!-- Sort Select -->
+        <div class="sort-wrapper">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="4" y1="6" x2="20" y2="6"></line>
+            <line x1="4" y1="12" x2="14" y2="12"></line>
+            <line x1="4" y1="18" x2="8" y2="18"></line>
+          </svg>
+          <select id="library-sort" class="sort-select">
+            <option value="recent">Recently Played</option>
+            <option value="title-asc">Title (A &rarr; Z)</option>
+            <option value="title-desc">Title (Z &rarr; A)</option>
+            <option value="author-asc">Author (A &rarr; Z)</option>
+            <option value="duration-desc">Duration (Longest)</option>
+            <option value="duration-asc">Duration (Shortest)</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <div id="book-grid" class="book-grid">
@@ -93,6 +135,17 @@
       <h3>No audiobooks found</h3>
       <p>Place your <code>.m4b</code> or <code>.m4a</code> files in your configured audiobooks folder and click Rescan.</p>
       <button class="btn-secondary" onclick="triggerScan()">Scan Library</button>
+    </div>
+
+    <!-- Search No Results State -->
+    <div id="search-empty-state" class="empty-state" style="display: none; padding: 48px 16px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <h3>No matching audiobooks</h3>
+      <p id="search-empty-text">No audiobooks match your search criteria.</p>
+      <button id="btn-reset-filters" class="btn-secondary">Clear Search & Filters</button>
     </div>
   </main>
 
@@ -496,6 +549,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.2"></script>
+  <script src="/static/app.js?v=2.4"></script>
 </body>
 </html>
