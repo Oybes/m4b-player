@@ -1,0 +1,17 @@
+{
+  "name": "M4B Audiobook Player",
+  "short_name": "Audiobooks",
+  "description": "Lightweight self-hosted M4B audiobook player",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#1e293b",
+  "icons": [
+    {
+      "src": "/api/books/cover",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

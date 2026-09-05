@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  m4b-player:
+    build: .
+    container_name: m4b-player
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      # Mount your local audiobooks directory here
+      - ./audiobooks:/app/audiobooks:ro
+      # Persistent data (SQLite database & cover art cache)
+      - ./data:/app/data
+    environment:
+      - PORT=8765
+      - DATA_DIR=/app/data
+      - AUDIOBOOKS_DIR=/app/audiobooks

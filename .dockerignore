@@ -1,0 +1,17 @@
+audiobooks/
+data/
+*.db
+*.db-journal
+*.m4b
+*.m4a
+*.mp4
+whisper_models/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+.gitignore
+.env
+.venv/
+env/

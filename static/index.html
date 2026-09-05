@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0b0f19">
+  <title id="page-title">M4B Audiobook Vault</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/style.css?v=2.2">
+</head>
+<body>
+
+  <!-- Audio Element (Independent of UI inspection) -->
+  <audio id="audio-player" preload="metadata"></audio>
+
+  <!-- Navigation Header -->
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+        <path d="M12 6v6l4-2-4-4z" fill="currentColor"></path>
+      </svg>
+      <span id="header-site-name">M4B Streamer</span>
+    </div>
+    
+    <div class="header-actions">
+      <!-- Upload Audiobook Button -->
+      <button id="btn-upload" class="btn-primary" style="display: none; padding: 6px 14px; font-size: 0.82rem; gap: 6px; align-items: center;" title="Upload an audiobook (.m4b)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <span>Upload</span>
+      </button>
+
+      <!-- Admin Settings Button -->
+      <button id="btn-admin-panel" class="btn-secondary" style="display: none;" title="Admin Settings & Users">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span>Admin</span>
+      </button>
+
+      <!-- Rescan Button -->
+      <button id="btn-scan" class="btn-secondary" title="Scan audiobooks directory">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+        </svg>
+        <span>Rescan</span>
+      </button>
+
+      <!-- User Info Badge & Logout -->
+      <div id="user-profile" class="user-badge" style="display: none;">
+        <span id="user-display-name">Username</span>
+        <span id="user-role-badge" class="role-pill">admin</span>
+        <button id="btn-logout" class="btn-icon-subtle" title="Sign Out">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+      <h2 class="section-title" style="margin-bottom: 0;">Audiobook Library</h2>
+      <span id="library-count" style="font-size: 0.85rem; color: var(--text-muted);">0 books</span>
+    </div>
+
+    <div id="book-grid" class="book-grid">
+      <!-- Cards rendered via app.js -->
+    </div>
+
+    <div id="empty-state" class="empty-state" style="display: none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <h3>No audiobooks found</h3>
+      <p>Place your <code>.m4b</code> or <code>.m4a</code> files in your configured audiobooks folder and click Rescan.</p>
+      <button class="btn-secondary" onclick="triggerScan()">Scan Library</button>
+    </div>
+  </main>
+
+  <!-- Bottom Floating Audio Player Bar (Independent Playback) -->
+  <footer id="player-bar" class="player-bar">
+    <!-- Scrubber -->
+    <div id="scrubber-container" class="scrubber-container">
+      <div class="scrubber-track">
+        <div id="scrubber-fill" class="scrubber-fill"></div>
+        <div id="scrubber-handle" class="scrubber-handle"></div>
+      </div>
+    </div>
+
+    <div class="player-inner">
+      <!-- Book Info -->
+      <div class="player-info" id="player-info-dock" style="cursor: pointer;" title="Inspect playing book">
+        <img id="player-cover" class="player-cover" src="/api/books/cover" alt="Cover">
+        <div class="player-text">
+          <div id="player-title" class="player-title">No book playing</div>
+          <div id="player-chapter" class="player-chapter">-</div>
+          <div id="player-author" class="player-author">-</div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="player-controls">
+        <div class="control-buttons">
+          <button id="btn-prev-chap" class="btn-icon" title="Previous Chapter">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="19 20 9 12 19 4 19 20"></polygon>
+              <line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2.5"></line>
+            </svg>
+          </button>
+
+          <button id="btn-skip-back" class="btn-icon" title="Rewind 15 seconds">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 4v6h6"></path>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+              <text x="12" y="15" fill="currentColor" stroke="none" font-size="8" font-weight="700" text-anchor="middle">15</text>
+            </svg>
+          </button>
+
+          <button id="btn-play" class="btn-icon btn-play-pause" title="Play / Pause">
+            <svg id="play-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            <svg id="pause-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+              <rect x="6" y="4" width="4" height="16"></rect>
+              <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+          </button>
+
+          <button id="btn-skip-forward" class="btn-icon" title="Fast Forward 30 seconds">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6"></path>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              <text x="12" y="15" fill="currentColor" stroke="none" font-size="8" font-weight="700" text-anchor="middle">30</text>
+            </svg>
+          </button>
+
+          <button id="btn-next-chap" class="btn-icon" title="Next Chapter">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 4 15 12 5 20 5 4"></polygon>
+              <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.5"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div class="time-display">
+          <span id="time-current">0:00:00</span> / <span id="time-total">0:00:00</span>
+        </div>
+      </div>
+
+      <!-- Extra Controls -->
+      <div class="player-extra">
+        <select id="speed-select" class="speed-select" title="Playback Speed">
+          <option value="0.75">0.75x</option>
+          <option value="1.0" selected>1.0x</option>
+          <option value="1.25">1.25x</option>
+          <option value="1.5">1.5x</option>
+          <option value="1.75">1.75x</option>
+          <option value="2.0">2.0x</option>
+        </select>
+
+        <button id="btn-sleep" class="btn-icon" title="Sleep Timer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+        <span id="sleep-badge" class="sleep-badge" style="display: none;"></span>
+
+        <button id="btn-player-drawer" class="btn-icon" title="View Playing Chapters">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- DECOUPLED BOOK DETAILS MODAL (Inspect & Edit Without Interrupting Playback) -->
+  <div id="details-backdrop" class="modal-backdrop">
+    <div class="modal details-modal">
+      <div class="modal-header">
+        <div>
+          <h3 id="details-title" class="modal-title">Book Details</h3>
+          <p id="details-author" class="modal-subtitle">Author Name</p>
+        </div>
+        <button id="details-close" class="drawer-close">&times;</button>
+      </div>
+
+      <div class="modal-body" style="padding: 20px;">
+        <div class="details-top-row">
+          <img id="details-cover" class="details-cover-img" src="/api/books/cover" alt="Cover">
+          <div class="details-meta-col">
+            <div id="details-narrator" class="details-meta-item">Narrated by: -</div>
+            <div id="details-duration" class="details-meta-item">Duration: 0:00:00</div>
+            <div id="details-progress-text" class="details-meta-item" style="color: var(--accent); font-weight: 600;">Your Progress: 0%</div>
+            
+            <!-- Action Buttons -->
+            <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
+              <button id="btn-details-play" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                <span id="btn-details-play-text">Play Audiobook</span>
+              </button>
+              <button id="btn-details-enrich" class="btn-secondary" style="display: flex; align-items: center; gap: 6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                <span>Edit / Enrich Chapters</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <h4 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--text-primary); display: flex; justify-content: space-between;">
+            <span>Chapters (<span id="details-chapter-count">0</span>)</span>
+          </h4>
+          <ul id="details-chapter-list" class="chapter-list" style="max-height: 240px; border: 1px solid var(--border); border-radius: 8px;">
+            <!-- Chapters rendered here -->
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ENRICH CHAPTERS MODAL -->
+  <div id="enrich-backdrop" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Enrich Chapter Titles</h3>
+          <p id="enrich-book-subtitle" class="modal-subtitle">For currently inspected book</p>
+        </div>
+        <button id="enrich-close" class="drawer-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Online Lookup -->
+        <div class="lookup-section">
+          <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; display: block;">
+            Search Audible / Audnexus for Chapter Titles:
+          </label>
+          <div class="lookup-input-group">
+            <input type="text" id="lookup-query" class="lookup-input" placeholder="Title, author, or Audible ASIN / URL...">
+            <button id="btn-lookup-search" class="btn-secondary" style="white-space: nowrap;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <span>Search Online</span>
+            </button>
+          </div>
+          <div id="lookup-results" class="lookup-results" style="display: none;"></div>
+        </div>
+
+        <!-- Progress & Whisper Buttons -->
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px;">
+          <div id="enrich-stats" class="enrich-stats">Found 0 chapters in file.</div>
+          <button id="btn-whisper-transcribe" class="btn-secondary" style="padding: 5px 12px; font-size: 0.78rem;" title="Transcribes the first 10 seconds of each chapter with local Whisper AI">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" y1="19" x2="12" y2="23"></line>
+              <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+            <span>Listen with Whisper AI</span>
+          </button>
+        </div>
+
+        <!-- Real-time Whisper AI Progress Bar -->
+        <div id="whisper-progress-container" style="display: none; background: var(--bg-primary); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);">
+          <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 6px;">
+            <span id="whisper-status-text">Transcribing chapters with Whisper AI...</span>
+            <span id="whisper-pct-text" style="font-weight: 700; color: var(--accent);">0%</span>
+          </div>
+          <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 9999px; overflow: hidden;">
+            <div id="whisper-progress-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #818cf8); transition: width 0.25s ease;"></div>
+          </div>
+        </div>
+
+        <textarea id="enrich-textarea" class="enrich-textarea" rows="10" placeholder="Chapter 1: Prologue&#10;Chapter 2: The Departure&#10;Chapter 3: The Journey"></textarea>
+        
+        <label class="enrich-checkbox-container">
+          <input type="checkbox" id="enrich-write-file">
+          <span>Also write updated chapter tags permanently into the <code>.m4b</code> file on disk (remux via ffmpeg copy)</span>
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button id="enrich-cancel" class="btn-secondary">Cancel</button>
+        <button id="enrich-save" class="btn-primary">Apply & Save Titles</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIRST-RUN SETUP WIZARD MODAL -->
+  <div id="setup-backdrop" class="modal-backdrop">
+    <div class="modal" style="max-width: 520px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Welcome to your M4B Server!</h3>
+          <p class="modal-subtitle">First-run setup wizard: Configure your server in 3 easy steps.</p>
+        </div>
+      </div>
+      <div class="modal-body" style="gap: 18px;">
+        <div class="form-group">
+          <label class="form-label">Library / Server Name</label>
+          <input type="text" id="setup-sitename" class="form-input" value="My Audiobook Vault">
+          <div class="form-hint">The title displayed at the top of your web player.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Audiobooks Directory</label>
+          <input type="text" id="setup-path" class="form-input" value="audiobooks">
+          <div class="form-hint">Folder to scan for <code>.m4b</code> files (e.g. <code>/audiobooks</code> on TrueNAS or a local path).</div>
+        </div>
+
+        <div class="form-group" style="border-top: 1px solid var(--border); padding-top: 14px;">
+          <label class="form-label">Create Administrator Account</label>
+          <input type="text" id="setup-username" class="form-input" placeholder="Admin username" style="margin-bottom: 8px;">
+          <input type="password" id="setup-password" class="form-input" placeholder="Admin password">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-setup-finish" class="btn-primary" style="width: 100%;">Complete Setup & Launch Library</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOGIN MODAL -->
+  <div id="login-backdrop" class="modal-backdrop">
+    <div class="modal" style="max-width: 400px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Sign In</h3>
+          <p class="modal-subtitle">Access your audiobooks & personal progress</p>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" id="login-username" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" id="login-password" class="form-input">
+        </div>
+        <div id="login-error" style="color: #f87171; font-size: 0.8rem; display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-login-submit" class="btn-primary" style="width: 100%;">Sign In</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN MANAGEMENT MODAL -->
+  <div id="admin-backdrop" class="modal-backdrop">
+    <div class="modal" style="max-width: 600px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Admin Management</h3>
+          <p class="modal-subtitle">Users & Server Configuration</p>
+        </div>
+        <button id="admin-close" class="drawer-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <h4 style="font-size: 0.95rem; margin-bottom: 8px;">Manage Users</h4>
+        
+        <!-- Add User Form -->
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; background: var(--bg-primary); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);">
+          <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Create User Account</div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <input type="text" id="admin-new-user" class="form-input" placeholder="New username" style="flex: 1; min-width: 120px;">
+            <input type="password" id="admin-new-pass" class="form-input" placeholder="Password" style="flex: 1; min-width: 120px;">
+            <select id="admin-new-role" class="form-input" style="width: 90px;">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 0.8rem;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <label style="color: var(--text-muted); font-size: 0.78rem;">Library Access:</label>
+              <select id="admin-new-access" class="form-input" style="padding: 4px 8px; font-size: 0.78rem;">
+                <option value="shared">Shared Library (All Books)</option>
+                <option value="personal">Personal Only (Only Uploads)</option>
+              </select>
+            </div>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; color: var(--text-primary);">
+              <input type="checkbox" id="admin-new-can-upload">
+              <span>Allow Uploads</span>
+            </label>
+            <button id="btn-admin-add-user" class="btn-primary" style="padding: 5px 14px; font-size: 0.8rem; margin-left: auto;">Add User</button>
+          </div>
+        </div>
+
+        <div id="admin-user-list" style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 4px;">
+          <!-- User rows rendered dynamically -->
+        </div>
+
+        <h4 style="font-size: 0.95rem; margin-top: 18px; margin-bottom: 8px;">Server Configuration</h4>
+        <div class="form-group">
+          <label class="form-label">Site Title</label>
+          <input type="text" id="admin-cfg-sitename" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Audiobooks Directory</label>
+          <input type="text" id="admin-cfg-path" class="form-input">
+        </div>
+        <button id="btn-admin-save-cfg" class="btn-secondary" style="margin-top: 8px; align-self: flex-start;">Save Configuration</button>
+
+        <!-- Database Maintenance & Reset -->
+        <div style="margin-top: 20px; padding: 14px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.04);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <div style="font-weight: 600; font-size: 0.88rem; color: #f87171; display: flex; align-items: center; gap: 6px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span>Library Database Maintenance</span>
+            </div>
+          </div>
+          <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
+            Clears all audiobooks, chapter customizations, listening progress, and cached covers to give you a clean fresh start. User accounts and server configurations are preserved.
+          </p>
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; font-size: 0.78rem; color: var(--text-secondary);">
+              <input type="checkbox" id="admin-rebuild-rescan" checked>
+              <span>Rescan audiobooks directory after clearing</span>
+            </label>
+            <button id="btn-admin-rebuild-db" class="btn-secondary" style="border-color: #ef4444; color: #f87171; font-size: 0.8rem; padding: 6px 12px;">
+              Rebuild Database & Rescan
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPLOAD AUDIOBOOK MODAL -->
+  <div id="upload-backdrop" class="modal-backdrop">
+    <div class="modal" style="max-width: 480px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Upload Audiobook</h3>
+          <p class="modal-subtitle">Upload an .m4b, .m4a, or .mp4 audiobook to your library</p>
+        </div>
+        <button id="upload-close" class="drawer-close">&times;</button>
+      </div>
+      <div class="modal-body" style="gap: 14px;">
+        <div id="upload-dropzone" class="upload-dropzone">
+          <input type="file" id="upload-file-input" accept=".m4b,.m4a,.mp4" style="display: none;">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--accent); margin-bottom: 8px;">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 4px;">Click to browse or drag & drop</div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">Supports large audiobooks. Chapters and artwork are automatically indexed.</div>
+        </div>
+
+        <div id="upload-file-info" style="display: none; background: var(--bg-primary); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.85rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span id="upload-filename" style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px;">file.m4b</span>
+            <span id="upload-filesize" style="color: var(--text-muted); font-size: 0.8rem;">0 MB</span>
+          </div>
+        </div>
+
+        <div id="upload-progress-container" style="display: none;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 6px;">
+            <span id="upload-status-text">Uploading...</span>
+            <span id="upload-pct-text" style="font-weight: 700; color: var(--accent);">0%</span>
+          </div>
+          <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 9999px; overflow: hidden;">
+            <div id="upload-progress-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #818cf8); transition: width 0.2s ease;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="upload-cancel" class="btn-secondary">Cancel</button>
+        <button id="upload-submit" class="btn-primary" disabled>Start Upload</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=2.2"></script>
+</body>
+</html>
