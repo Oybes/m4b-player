@@ -8,6 +8,10 @@ data/
 *.mp4
 whisper_models/
 
+# Test & Scratch scripts
+test_*.py
+create_sample_*.py
+
 # Python
 __pycache__/
 *.py[cod]
