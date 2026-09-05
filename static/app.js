@@ -80,6 +80,26 @@ const detailsChapterList = document.getElementById("details-chapter-list");
 const btnDetailsPlay = document.getElementById("btn-details-play");
 const btnDetailsPlayText = document.getElementById("btn-details-play-text");
 const btnDetailsEnrich = document.getElementById("btn-details-enrich");
+const btnDetailsReset = document.getElementById("btn-details-reset");
+const btnDetailsDelete = document.getElementById("btn-details-delete");
+
+// Navigation & Views
+const navTabLibrary = document.getElementById("nav-tab-library");
+const navTabHistory = document.getElementById("nav-tab-history");
+const viewLibrary = document.getElementById("view-library");
+const viewHistory = document.getElementById("view-history");
+const btnHistoryGoLibrary = document.getElementById("btn-history-go-library");
+
+// Stats & History Elements
+const statTotalTime = document.getElementById("stat-total-time");
+const statCompletedCount = document.getElementById("stat-completed-count");
+const statInprogressCount = document.getElementById("stat-inprogress-count");
+const statTopAuthor = document.getElementById("stat-top-author");
+const historyCount = document.getElementById("history-count");
+const historyTimelineList = document.getElementById("history-timeline-list");
+const historyEmptyState = document.getElementById("history-empty-state");
+
+let currentView = "library";
 
 // Enrich Chapters Modal
 const enrichBackdrop = document.getElementById("enrich-backdrop");
@@ -332,11 +352,11 @@ async function loadLibrary() {
 function getFilteredAndSortedBooks() {
   let result = [...books];
 
-  // 1. Status Filter
+  // 1. Status Filter (In Progress requires at least 2 minutes / 120s of listening)
   if (currentFilter === "in-progress") {
-    result = result.filter(b => b.progress && b.progress.position > 0 && !b.progress.completed);
+    result = result.filter(b => b.progress && (b.progress.position || 0) >= 120 && !b.progress.completed);
   } else if (currentFilter === "unheard") {
-    result = result.filter(b => !b.progress || b.progress.position === 0);
+    result = result.filter(b => !b.progress || ((b.progress.position || 0) < 120 && !b.progress.completed));
   } else if (currentFilter === "completed") {
     result = result.filter(b => b.progress && b.progress.completed);
   } else if (currentFilter === "uploads") {
@@ -506,6 +526,25 @@ async function openBookDetails(bookId) {
       btnDetailsPlayText.textContent = "Play Audiobook";
     }
 
+    // Reset Progress button visibility
+    if (btnDetailsReset) {
+      if (pos > 0) {
+        btnDetailsReset.style.display = "inline-flex";
+      } else {
+        btnDetailsReset.style.display = "none";
+      }
+    }
+
+    // Delete Audiobook button visibility (uploader or admin)
+    if (btnDetailsDelete) {
+      const canDelete = currentUser && (currentUser.role === "admin" || (book.uploaded_by && book.uploaded_by === currentUser.id));
+      if (canDelete) {
+        btnDetailsDelete.style.display = "inline-flex";
+      } else {
+        btnDetailsDelete.style.display = "none";
+      }
+    }
+
     // Render chapters list inside details
     detailsChapterCount.textContent = (book.chapters || []).length;
     detailsChapterList.innerHTML = "";
@@ -549,13 +588,256 @@ if (btnDetailsPlay) {
   });
 }
 
-// "Edit / Enrich Chapters" from details modal (inspecting without playback interruption)
+// "Edit / Enrich Chapters" from details modal
 if (btnDetailsEnrich) {
   btnDetailsEnrich.addEventListener("click", () => {
     if (inspectedBook) {
       openEnrichModal(inspectedBook);
     }
   });
+}
+
+// "Reset Progress" from details modal
+if (btnDetailsReset) {
+  btnDetailsReset.addEventListener("click", async () => {
+    if (!inspectedBook) return;
+    if (!confirm(`Are you sure you want to reset your listening progress on "${inspectedBook.title}" back to the beginning?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/books/${inspectedBook.id}/reset-progress`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to reset progress");
+
+      // Update inspected book
+      inspectedBook.progress = { position: 0.0, playback_rate: 1.0, completed: false, last_played_at: null };
+      
+      // Update book in local cache
+      const b = books.find(x => x.id === inspectedBook.id);
+      if (b) {
+        b.progress = { position: 0.0, playback_rate: 1.0, completed: false, last_played_at: null };
+      }
+
+      // If playing this book right now, seek to beginning
+      if (playingBook && playingBook.id === inspectedBook.id) {
+        audio.currentTime = 0;
+        timeCurrent.textContent = formatTime(0);
+        scrubberFill.style.width = "0%";
+      }
+
+      // Update modal text
+      detailsProgressText.textContent = `Your Progress: 0% (${formatTime(0)} of ${formatTime(inspectedBook.duration)})`;
+      btnDetailsPlayText.textContent = "Play Audiobook";
+      btnDetailsReset.style.display = "none";
+
+      renderLibrary();
+      if (currentView === "history") {
+        loadHistoryAndStats();
+      }
+    } catch (err) {
+      alert("Error resetting progress: " + err.message);
+    }
+  });
+}
+
+// "Delete Audiobook" from details modal
+if (btnDetailsDelete) {
+  btnDetailsDelete.addEventListener("click", async () => {
+    if (!inspectedBook) return;
+    if (!confirm(`Are you sure you want to permanently delete "${inspectedBook.title}"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/books/${inspectedBook.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to delete audiobook");
+
+      // Stop playback if currently playing
+      if (playingBook && playingBook.id === inspectedBook.id) {
+        audio.pause();
+        audio.src = "";
+        playingBook = null;
+        playerBar.classList.remove("visible");
+        document.body.style.paddingBottom = "0px";
+      }
+
+      closeBookDetails();
+      await loadLibrary();
+      if (currentView === "history") {
+        loadHistoryAndStats();
+      }
+    } catch (err) {
+      alert("Error deleting audiobook: " + err.message);
+    }
+  });
+}
+
+// -------------------------------------------------------------
+// VIEW SWITCHING (LIBRARY vs HISTORY & STATS)
+// -------------------------------------------------------------
+function switchView(viewName) {
+  currentView = viewName;
+  if (viewName === "library") {
+    if (navTabLibrary) navTabLibrary.classList.add("active");
+    if (navTabHistory) navTabHistory.classList.remove("active");
+    if (viewLibrary) viewLibrary.style.display = "block";
+    if (viewHistory) viewHistory.style.display = "none";
+  } else if (viewName === "history") {
+    if (navTabLibrary) navTabLibrary.classList.remove("active");
+    if (navTabHistory) navTabHistory.classList.add("active");
+    if (viewLibrary) viewLibrary.style.display = "none";
+    if (viewHistory) viewHistory.style.display = "block";
+    loadHistoryAndStats();
+  }
+}
+
+if (navTabLibrary) navTabLibrary.addEventListener("click", () => switchView("library"));
+if (navTabHistory) navTabHistory.addEventListener("click", () => switchView("history"));
+if (btnHistoryGoLibrary) btnHistoryGoLibrary.addEventListener("click", () => switchView("library"));
+
+// -------------------------------------------------------------
+// USER LISTENING HISTORY & STATISTICS
+// -------------------------------------------------------------
+function formatListeningDuration(seconds) {
+  if (!seconds || seconds <= 0) return "0m";
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  let parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+  return parts.join(" ");
+}
+
+function formatRelativeTime(dateStr) {
+  if (!dateStr) return "Recently";
+  const d = new Date(dateStr.endsWith("Z") ? dateStr : dateStr + "Z");
+  if (isNaN(d.getTime())) return dateStr;
+  
+  const now = new Date();
+  const diffSec = Math.floor((now - d) / 1000);
+  
+  if (diffSec < 60) return "Just now";
+  if (diffSec < 3600) return `${Math.max(1, Math.floor(diffSec / 60))}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  if (diffSec < 172800) return "Yesterday";
+  if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
+}
+
+async function loadHistoryAndStats() {
+  try {
+    const res = await fetch("/api/user/history");
+    if (!res.ok) return;
+    const data = await res.json();
+    const stats = data.stats || {};
+    const items = data.history || [];
+
+    // Populate Stat Cards
+    if (statTotalTime) statTotalTime.textContent = formatListeningDuration(stats.total_listen_seconds || 0);
+    if (statCompletedCount) statCompletedCount.textContent = stats.completed_count || 0;
+    if (statInprogressCount) statInprogressCount.textContent = stats.in_progress_count || 0;
+    if (statTopAuthor) statTopAuthor.textContent = stats.top_author || "-";
+    if (historyCount) historyCount.textContent = `${items.length} audiobook${items.length === 1 ? "" : "s"}`;
+
+    // Render Timeline List
+    if (!historyTimelineList) return;
+    historyTimelineList.innerHTML = "";
+
+    if (items.length === 0) {
+      if (historyEmptyState) historyEmptyState.style.display = "block";
+      historyTimelineList.style.display = "none";
+      return;
+    }
+
+    if (historyEmptyState) historyEmptyState.style.display = "none";
+    historyTimelineList.style.display = "flex";
+
+    items.forEach(item => {
+      const el = document.createElement("div");
+      el.className = "history-item";
+      
+      const pct = item.duration > 0 ? Math.min(100, Math.round((item.position / item.duration) * 100)) : 0;
+      const coverSrc = item.cover_url || "/api/books/cover";
+      const relTime = formatRelativeTime(item.last_played_at);
+      
+      el.innerHTML = `
+        <div class="history-top-row" style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0;">
+          <div class="history-cover-wrap">
+            <img src="${coverSrc}" alt="${escapeHtml(item.title)}" loading="lazy">
+          </div>
+          <div class="history-details">
+            <div class="history-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
+            <div class="history-meta">
+              <span>${escapeHtml(item.author || "Unknown")}</span>
+              <span>&bull;</span>
+              <span>${formatTime(item.duration)}</span>
+              <span>&bull;</span>
+              <span style="color: var(--accent); font-weight: 500;">${relTime}</span>
+            </div>
+            <div class="history-progress-wrap">
+              <div class="history-progress-bar">
+                <div class="history-progress-fill" style="width: ${pct}%;"></div>
+              </div>
+              <span class="history-progress-text">${pct}% (${formatTime(item.position)})</span>
+            </div>
+          </div>
+        </div>
+        <div class="history-actions">
+          <button class="btn-history-play" title="Play / Resume">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <span>${item.position > 0 && !item.completed ? "Resume" : "Play"}</span>
+          </button>
+          <button class="btn-history-reset" title="Reset your listening progress">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+            <span>Reset</span>
+          </button>
+        </div>
+      `;
+
+      // Play button
+      const playBtn = el.querySelector(".btn-history-play");
+      playBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        startPlayingBook(item.book_id, item.position > 0 && !item.completed ? item.position : 0);
+      });
+
+      // Reset progress button
+      const resetBtn = el.querySelector(".btn-history-reset");
+      resetBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Are you sure you want to reset your progress for "${item.title}" back to 0:00?`)) return;
+        try {
+          const res = await fetch(`/api/books/${item.book_id}/reset-progress`, { method: "POST" });
+          if (!res.ok) throw new Error("Failed to reset progress");
+          
+          const b = books.find(x => x.id === item.book_id);
+          if (b) {
+            b.progress = { position: 0.0, playback_rate: 1.0, completed: false, last_played_at: null };
+          }
+          if (playingBook && playingBook.id === item.book_id) {
+            audio.currentTime = 0;
+            timeCurrent.textContent = formatTime(0);
+            scrubberFill.style.width = "0%";
+          }
+          loadHistoryAndStats();
+          renderLibrary();
+        } catch (err) {
+          alert("Error resetting progress: " + err.message);
+        }
+      });
+
+      // Clicking row opens book details modal
+      el.addEventListener("click", () => {
+        openBookDetails(item.book_id);
+      });
+
+      historyTimelineList.appendChild(el);
+    });
+  } catch (err) {
+    console.error("Failed loading history & stats:", err);
+  }
 }
 
 // -------------------------------------------------------------
@@ -648,6 +930,20 @@ async function syncProgress(force = false) {
     if (card) {
       const fill = card.querySelector(".card-progress-fill");
       if (fill) fill.style.width = `${Math.min(100, (pos / duration) * 100)}%`;
+    }
+
+    // Keep memory cache updated
+    const bookInList = books.find(b => b.id === playingBook.id);
+    if (bookInList) {
+      bookInList.progress = {
+        position: pos,
+        playback_rate: audio.playbackRate,
+        completed: isCompleted,
+        last_played_at: new Date().toISOString()
+      };
+    }
+    if (currentView === "history") {
+      loadHistoryAndStats();
     }
   } catch (err) {
     console.warn("Progress sync error:", err);

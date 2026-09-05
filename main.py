@@ -353,6 +353,57 @@ def update_progress(book_id: str, payload: ProgressPayload, user: Dict[str, Any]
     )
     return {"status": "ok"}
 
+@app.post("/api/books/{book_id}/reset-progress")
+def reset_progress(book_id: str, user: Dict[str, Any] = Depends(require_user)):
+    """Reset listening progress for the current authenticated user on this audiobook."""
+    database.reset_user_progress(user["id"], book_id)
+    return {"status": "ok", "message": "Progress reset successfully"}
+
+@app.delete("/api/books/{book_id}")
+def delete_audiobook(book_id: str, user: Dict[str, Any] = Depends(require_user)):
+    """Delete an audiobook if the user is an admin or the original uploader."""
+    book = database.get_book_by_id(book_id, user_id=user["id"])
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+        
+    is_admin = user.get("role") == "admin"
+    is_uploader = book.get("uploaded_by") == user["id"]
+    if not (is_admin or is_uploader):
+        raise HTTPException(status_code=403, detail="You do not have permission to delete this audiobook")
+        
+    deleted_book = database.delete_book(book_id)
+    if not deleted_book:
+        raise HTTPException(status_code=404, detail="Book not found")
+        
+    # Remove cover files from data/covers/
+    data_dir = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
+    for ext in [".jpg", ".png", ".jpeg"]:
+        cov = data_dir / "covers" / f"{book_id}{ext}"
+        if cov.exists():
+            try:
+                cov.unlink()
+            except Exception:
+                pass
+                
+    # Remove file from disk if in uploads or if deleted by admin
+    file_path_str = deleted_book.get("file_path")
+    if file_path_str:
+        fpath = Path(file_path_str)
+        is_in_uploads = "uploads" in fpath.parts or (deleted_book.get("uploaded_by") is not None)
+        if is_in_uploads or is_admin:
+            try:
+                if fpath.exists():
+                    fpath.unlink()
+            except Exception as e:
+                print(f"[Delete] Could not remove file {fpath} from disk: {e}")
+                
+    return {"status": "ok", "message": f"Successfully deleted '{deleted_book.get('title')}'"}
+
+@app.get("/api/user/history")
+def get_user_history(user: Dict[str, Any] = Depends(require_user)):
+    """Get listening history and calculated statistics for the current user."""
+    return database.get_user_history_and_stats(user["id"])
+
 @app.post("/api/books/{book_id}/chapters")
 def enrich_chapters(book_id: str, payload: EnrichChaptersPayload, user: Dict[str, Any] = Depends(require_user)):
     """Enriches or edits chapter titles for an audiobook."""

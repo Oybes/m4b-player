@@ -507,4 +507,108 @@ def rebuild_audiobooks_database():
     cursor.execute("VACUUM")
     conn.close()
 
+def delete_book(book_id: str) -> Optional[Dict[str, Any]]:
+    """Deletes a book and all associated listening progress from the database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM books WHERE id = ?", (book_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return None
+    
+    book = dict(row)
+    cursor.execute("DELETE FROM progress WHERE book_id = ?", (book_id,))
+    cursor.execute("DELETE FROM books WHERE id = ?", (book_id,))
+    conn.commit()
+    conn.close()
+    return book
+
+def reset_user_progress(user_id: str, book_id: str) -> bool:
+    """Removes or resets listening progress for a specific user and book."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM progress WHERE user_id = ? AND book_id = ?", (user_id, book_id))
+    conn.commit()
+    conn.close()
+    return True
+
+def get_user_history_and_stats(user_id: str) -> Dict[str, Any]:
+    """Calculates user listening statistics and returns chronological history."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    user = get_user_by_id(user_id)
+    
+    cursor.execute("""
+    SELECT 
+        p.user_id, p.book_id, p.position, p.playback_rate, p.completed, p.last_played_at,
+        b.title, b.author, b.narrator, b.duration, b.cover_path, b.uploaded_by
+    FROM progress p
+    JOIN books b ON p.book_id = b.id
+    WHERE p.user_id = ?
+    ORDER BY p.last_played_at DESC
+    """, (user_id,))
+    
+    rows = cursor.fetchall()
+    
+    history_items = []
+    total_listen_seconds = 0.0
+    completed_count = 0
+    in_progress_count = 0
+    author_listen_time: Dict[str, float] = {}
+    
+    for r in rows:
+        # Permission check if user has personal library only
+        if user and user["role"] != "admin":
+            if not user["shared_library"] and r["uploaded_by"] != user_id:
+                continue
+            if user["shared_library"] and r["uploaded_by"] is not None and r["uploaded_by"] != user_id:
+                continue
+                
+        pos = float(r["position"] or 0.0)
+        dur = float(r["duration"] or 0.0)
+        is_comp = bool(r["completed"])
+        
+        total_listen_seconds += pos
+        if is_comp:
+            completed_count += 1
+        elif pos >= 120.0:  # 2 minute threshold
+            in_progress_count += 1
+            
+        author = r["author"] or "Unknown"
+        if author and author != "Unknown":
+            author_listen_time[author] = author_listen_time.get(author, 0.0) + pos
+            
+        history_items.append({
+            "book_id": r["book_id"],
+            "title": r["title"],
+            "author": r["author"],
+            "narrator": r["narrator"],
+            "duration": dur,
+            "cover_url": f"/api/books/{r['book_id']}/cover" if r["cover_path"] else None,
+            "position": pos,
+            "playback_rate": r["playback_rate"] or 1.0,
+            "completed": is_comp,
+            "last_played_at": r["last_played_at"]
+        })
+        
+    top_author = "-"
+    if author_listen_time:
+        top_author = max(author_listen_time.items(), key=lambda x: x[1])[0]
+        
+    conn.close()
+    
+    return {
+        "stats": {
+            "total_listen_seconds": total_listen_seconds,
+            "completed_count": completed_count,
+            "in_progress_count": in_progress_count,
+            "top_author": top_author,
+            "history_count": len(history_items)
+        },
+        "history": history_items
+    }
+
+
 
