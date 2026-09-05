@@ -1350,3 +1350,13 @@ window.addEventListener("beforeunload", () => {
 
 // Run
 initApp();
+
+// Register PWA Service Worker
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/static/sw.js").catch((err) => {
+      console.warn("[PWA] ServiceWorker registration:", err);
+    });
+  });
+}
+
