@@ -1657,6 +1657,39 @@ main {
   }
 }
 
+/* ==========================================================================
+   Series Badge & Filter Styles
+   ========================================================================== */
+.card-series-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  width: fit-content;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.01em;
+}
+
+.card-series-badge:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: var(--accent);
+}
+
+.series-filter-wrapper select {
+  max-width: 190px;
+}
+
+
 
 
 

@@ -24,12 +24,16 @@ const btnSearchClear = document.getElementById("btn-search-clear");
 const filterChips = document.querySelectorAll(".filter-chip");
 const filterChipUploads = document.getElementById("filter-chip-uploads");
 const librarySort = document.getElementById("library-sort");
+const librarySeriesFilter = document.getElementById("library-series-filter");
+const seriesFilterWrapper = document.getElementById("series-filter-wrapper");
+const existingSeriesList = document.getElementById("existing-series-list");
 const searchEmptyState = document.getElementById("search-empty-state");
 const searchEmptyText = document.getElementById("search-empty-text");
 const btnResetFilters = document.getElementById("btn-reset-filters");
 
 let currentSearchQuery = "";
 let currentFilter = "all";
+let currentSeriesFilter = "all";
 let currentSort = "recent";
 
 // Header User Profile, Admin & Upload
@@ -73,15 +77,28 @@ const detailsTitle = document.getElementById("details-title");
 const detailsAuthor = document.getElementById("details-author");
 const detailsCover = document.getElementById("details-cover");
 const detailsNarrator = document.getElementById("details-narrator");
+const detailsSeries = document.getElementById("details-series");
 const detailsDuration = document.getElementById("details-duration");
 const detailsProgressText = document.getElementById("details-progress-text");
 const detailsChapterCount = document.getElementById("details-chapter-count");
 const detailsChapterList = document.getElementById("details-chapter-list");
 const btnDetailsPlay = document.getElementById("btn-details-play");
 const btnDetailsPlayText = document.getElementById("btn-details-play-text");
+const btnDetailsEditMeta = document.getElementById("btn-details-edit-meta");
 const btnDetailsEnrich = document.getElementById("btn-details-enrich");
 const btnDetailsReset = document.getElementById("btn-details-reset");
 const btnDetailsDelete = document.getElementById("btn-details-delete");
+
+// Edit Metadata Modal
+const editMetaBackdrop = document.getElementById("edit-meta-backdrop");
+const editMetaClose = document.getElementById("edit-meta-close");
+const editMetaCancel = document.getElementById("edit-meta-cancel");
+const editMetaSave = document.getElementById("edit-meta-save");
+const editMetaTitle = document.getElementById("edit-meta-title");
+const editMetaAuthor = document.getElementById("edit-meta-author");
+const editMetaNarrator = document.getElementById("edit-meta-narrator");
+const editMetaSeries = document.getElementById("edit-meta-series");
+const editMetaSequence = document.getElementById("edit-meta-sequence");
 
 // Navigation & Views
 const navTabLibrary = document.getElementById("nav-tab-library");
@@ -170,6 +187,11 @@ const uploadProgressContainer = document.getElementById("upload-progress-contain
 const uploadStatusText = document.getElementById("upload-status-text");
 const uploadPctText = document.getElementById("upload-pct-text");
 const uploadProgressFill = document.getElementById("upload-progress-fill");
+const uploadMetadataFields = document.getElementById("upload-metadata-fields");
+const uploadSeries = document.getElementById("upload-series");
+const uploadSequence = document.getElementById("upload-sequence");
+const uploadTitle = document.getElementById("upload-title");
+const uploadAuthor = document.getElementById("upload-author");
 
 // Utilities
 function formatTime(seconds) {
@@ -343,9 +365,63 @@ async function loadLibrary() {
     const data = await res.json();
     books = data.books || [];
     libraryCount.textContent = `${books.length} book${books.length === 1 ? "" : "s"}`;
+    await populateSeriesDropdown();
     renderLibrary();
   } catch (err) {
     console.error("Failed loading library:", err);
+  }
+}
+
+async function populateSeriesDropdown() {
+  try {
+    const res = await fetch("/api/series");
+    if (!res.ok) return;
+    const data = await res.json();
+    const seriesList = data.series || [];
+
+    // Populate Datalist for autocomplete in Upload & Edit modal
+    if (existingSeriesList) {
+      existingSeriesList.innerHTML = "";
+      seriesList.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s.series;
+        existingSeriesList.appendChild(opt);
+      });
+    }
+
+    // Populate Library Series Filter Select
+    if (librarySeriesFilter && seriesFilterWrapper) {
+      if (seriesList.length === 0) {
+        seriesFilterWrapper.style.display = "none";
+        currentSeriesFilter = "all";
+        return;
+      }
+
+      seriesFilterWrapper.style.display = "inline-flex";
+      const prevVal = librarySeriesFilter.value;
+      
+      librarySeriesFilter.innerHTML = `
+        <option value="all">All Series</option>
+        <option value="none">Standalone (No Series)</option>
+      `;
+
+      seriesList.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s.series;
+        opt.textContent = `${s.series} (${s.count})`;
+        librarySeriesFilter.appendChild(opt);
+      });
+
+      if (seriesList.some(s => s.series === prevVal) || prevVal === "none") {
+        librarySeriesFilter.value = prevVal;
+        currentSeriesFilter = prevVal;
+      } else {
+        librarySeriesFilter.value = "all";
+        currentSeriesFilter = "all";
+      }
+    }
+  } catch (err) {
+    console.warn("Failed loading series:", err);
   }
 }
 
@@ -365,7 +441,14 @@ function getFilteredAndSortedBooks() {
     }
   }
 
-  // 2. Text Search Query
+  // 2. Series Filter
+  if (currentSeriesFilter === "none") {
+    result = result.filter(b => !b.series || !b.series.trim());
+  } else if (currentSeriesFilter && currentSeriesFilter !== "all") {
+    result = result.filter(b => b.series && b.series.toLowerCase() === currentSeriesFilter.toLowerCase());
+  }
+
+  // 3. Text Search Query (checks title, author, narrator, description, and series)
   if (currentSearchQuery) {
     const q = currentSearchQuery.toLowerCase();
     result = result.filter(b => {
@@ -373,12 +456,53 @@ function getFilteredAndSortedBooks() {
       const author = (b.author || "").toLowerCase();
       const narrator = (b.narrator || "").toLowerCase();
       const desc = (b.description || "").toLowerCase();
-      return title.includes(q) || author.includes(q) || narrator.includes(q) || desc.includes(q);
+      const series = (b.series || "").toLowerCase();
+      return title.includes(q) || author.includes(q) || narrator.includes(q) || desc.includes(q) || series.includes(q);
     });
   }
 
-  // 3. Sorting
-  if (currentSort === "title-asc") {
+  // 4. Sorting
+  if (currentSort === "series-asc") {
+    result.sort((a, b) => {
+      const sA = (a.series || "").trim();
+      const sB = (b.series || "").trim();
+      if (!sA && !sB) return (a.title || "").localeCompare(b.title || "");
+      if (!sA) return 1;
+      if (!sB) return -1;
+      const cmp = sA.localeCompare(sB, undefined, { sensitivity: "base" });
+      if (cmp !== 0) return cmp;
+      
+      const seqA = parseFloat(a.series_sequence);
+      const seqB = parseFloat(b.series_sequence);
+      if (!isNaN(seqA) && !isNaN(seqB)) {
+        if (seqA !== seqB) return seqA - seqB;
+      } else if (a.series_sequence || b.series_sequence) {
+        const seqCmp = (a.series_sequence || "").localeCompare(b.series_sequence || "", undefined, { numeric: true });
+        if (seqCmp !== 0) return seqCmp;
+      }
+      return (a.title || "").localeCompare(b.title || "");
+    });
+  } else if (currentSort === "series-desc") {
+    result.sort((a, b) => {
+      const sA = (a.series || "").trim();
+      const sB = (b.series || "").trim();
+      if (!sA && !sB) return (a.title || "").localeCompare(b.title || "");
+      if (!sA) return 1;
+      if (!sB) return -1;
+      const cmp = sB.localeCompare(sA, undefined, { sensitivity: "base" });
+      if (cmp !== 0) return cmp;
+      
+      const seqA = parseFloat(a.series_sequence);
+      const seqB = parseFloat(b.series_sequence);
+      if (!isNaN(seqA) && !isNaN(seqB)) {
+        if (seqA !== seqB) return seqB - seqA;
+      } else if (a.series_sequence || b.series_sequence) {
+        const seqCmp = (b.series_sequence || "").localeCompare(a.series_sequence || "", undefined, { numeric: true });
+        if (seqCmp !== 0) return seqCmp;
+      }
+      return (a.title || "").localeCompare(b.title || "");
+    });
+  } else if (currentSort === "title-asc") {
     result.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
   } else if (currentSort === "title-desc") {
     result.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
@@ -430,7 +554,7 @@ function renderLibrary() {
   const filteredBooks = getFilteredAndSortedBooks();
 
   // Dynamic Counter
-  if (currentSearchQuery || currentFilter !== "all") {
+  if (currentSearchQuery || currentFilter !== "all" || (currentSeriesFilter && currentSeriesFilter !== "all")) {
     libraryCount.textContent = `Showing ${filteredBooks.length} of ${books.length} book${books.length === 1 ? "" : "s"}`;
   } else {
     libraryCount.textContent = `${books.length} book${books.length === 1 ? "" : "s"}`;
@@ -444,6 +568,8 @@ function renderLibrary() {
       if (searchEmptyText) {
         if (currentSearchQuery) {
           searchEmptyText.textContent = `No audiobooks match "${currentSearchQuery}".`;
+        } else if (currentSeriesFilter && currentSeriesFilter !== "all") {
+          searchEmptyText.textContent = `No audiobooks found in series "${currentSeriesFilter}".`;
         } else {
           searchEmptyText.textContent = `No audiobooks match the "${currentFilter}" filter.`;
         }
@@ -462,6 +588,12 @@ function renderLibrary() {
     
     const progressPct = book.duration > 0 ? Math.min(100, (book.progress.position / book.duration) * 100) : 0;
     const coverSrc = book.cover_url || "/api/books/cover";
+    const seriesHtml = book.series ? `
+      <div class="card-series-badge" title="Filter by series: ${escapeHtml(book.series)}" data-series="${escapeHtml(book.series)}">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+        <span>${escapeHtml(book.series)}${book.series_sequence ? ` #${escapeHtml(book.series_sequence)}` : ""}</span>
+      </div>
+    ` : "";
 
     card.innerHTML = `
       <div class="card-cover">
@@ -476,6 +608,7 @@ function renderLibrary() {
         </div>
       </div>
       <div class="card-content">
+        ${seriesHtml}
         <div class="card-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}</div>
         <div class="card-author">${escapeHtml(book.author || "Unknown")}</div>
         <div class="card-meta">
@@ -484,6 +617,19 @@ function renderLibrary() {
         </div>
       </div>
     `;
+
+    // Click on Series Badge -> Filter by that Series directly
+    const seriesBadgeEl = card.querySelector(".card-series-badge");
+    if (seriesBadgeEl) {
+      seriesBadgeEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (librarySeriesFilter) {
+          librarySeriesFilter.value = book.series;
+          currentSeriesFilter = book.series;
+        }
+        renderLibrary();
+      });
+    }
 
     // Click on Card -> OPEN DETAILS (Decoupled, does not auto-play or interrupt audio!)
     card.addEventListener("click", (e) => {
@@ -515,6 +661,17 @@ async function openBookDetails(bookId) {
     detailsCover.src = book.cover_url || "/api/books/cover";
     detailsNarrator.textContent = book.narrator ? `Narrated by: ${book.narrator}` : "Narrator: -";
     detailsDuration.textContent = `Duration: ${formatTime(book.duration)}`;
+
+    // Series info in details modal
+    if (detailsSeries) {
+      if (book.series) {
+        detailsSeries.textContent = `Series: ${book.series}${book.series_sequence ? ` #${book.series_sequence}` : ""}`;
+        detailsSeries.style.display = "block";
+      } else {
+        detailsSeries.textContent = "";
+        detailsSeries.style.display = "none";
+      }
+    }
     
     const pos = book.progress?.position || 0;
     const pct = book.duration > 0 ? Math.round((pos / book.duration) * 100) : 0;
@@ -524,6 +681,12 @@ async function openBookDetails(bookId) {
       btnDetailsPlayText.textContent = `Resume from ${formatTime(pos)}`;
     } else {
       btnDetailsPlayText.textContent = "Play Audiobook";
+    }
+
+    // Edit Metadata button visibility (uploader or admin)
+    if (btnDetailsEditMeta) {
+      const canEdit = currentUser && (currentUser.role === "admin" || (book.uploaded_by && book.uploaded_by === currentUser.id));
+      btnDetailsEditMeta.style.display = canEdit ? "inline-flex" : "none";
     }
 
     // Reset Progress button visibility
@@ -584,6 +747,132 @@ if (btnDetailsPlay) {
     if (inspectedBook) {
       startPlayingBook(inspectedBook.id);
       closeBookDetails();
+    }
+  });
+}
+
+// "Edit Info" (metadata & series) from details modal
+function openEditMetaModal(book) {
+  if (!book) return;
+  if (editMetaTitle) editMetaTitle.value = book.title || "";
+  if (editMetaAuthor) editMetaAuthor.value = book.author || "";
+  if (editMetaNarrator) editMetaNarrator.value = book.narrator || "";
+  if (editMetaSeries) editMetaSeries.value = book.series || "";
+  if (editMetaSequence) editMetaSequence.value = book.series_sequence || "";
+  if (editMetaBackdrop) editMetaBackdrop.classList.add("open");
+}
+
+function closeEditMetaModal() {
+  if (editMetaBackdrop) editMetaBackdrop.classList.remove("open");
+}
+
+if (btnDetailsEditMeta) {
+  btnDetailsEditMeta.addEventListener("click", () => {
+    if (inspectedBook) {
+      openEditMetaModal(inspectedBook);
+    }
+  });
+}
+
+if (editMetaClose) editMetaClose.addEventListener("click", closeEditMetaModal);
+if (editMetaCancel) editMetaCancel.addEventListener("click", closeEditMetaModal);
+if (editMetaBackdrop) {
+  editMetaBackdrop.addEventListener("click", (e) => {
+    if (e.target === editMetaBackdrop) closeEditMetaModal();
+  });
+}
+
+if (editMetaSave) {
+  editMetaSave.addEventListener("click", async () => {
+    if (!inspectedBook) return;
+    const title = (editMetaTitle ? editMetaTitle.value : "").trim();
+    const author = (editMetaAuthor ? editMetaAuthor.value : "").trim();
+    const narrator = (editMetaNarrator ? editMetaNarrator.value : "").trim();
+    const series = (editMetaSeries ? editMetaSeries.value : "").trim();
+    const series_sequence = (editMetaSequence ? editMetaSequence.value : "").trim();
+
+    if (!title) {
+      alert("Audiobook title cannot be empty.");
+      return;
+    }
+
+    const originalText = editMetaSave.textContent;
+    editMetaSave.disabled = true;
+    editMetaSave.textContent = "Saving...";
+
+    try {
+      const res = await fetch(`/api/books/${inspectedBook.id}/metadata`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          author,
+          narrator,
+          series,
+          series_sequence
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to update metadata");
+
+      // Update inspectedBook
+      inspectedBook.title = title;
+      inspectedBook.author = author;
+      inspectedBook.narrator = narrator;
+      inspectedBook.series = series;
+      inspectedBook.series_sequence = series_sequence;
+
+      // Update local books array
+      const b = books.find(x => x.id === inspectedBook.id);
+      if (b) {
+        b.title = title;
+        b.author = author;
+        b.narrator = narrator;
+        b.series = series;
+        b.series_sequence = series_sequence;
+      }
+
+      // If this book is currently playing, update player bar if title/author changed
+      if (playingBook && playingBook.id === inspectedBook.id) {
+        playingBook.title = title;
+        playingBook.author = author;
+        if (playerTitle) playerTitle.textContent = title;
+        if (playerAuthor) playerAuthor.textContent = author || "Unknown Author";
+        if ("mediaSession" in navigator) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: title,
+            artist: author || "Unknown Author",
+            artwork: [{ src: inspectedBook.cover_url || "/api/books/cover", sizes: "512x512", type: "image/jpeg" }]
+          });
+        }
+      }
+
+      // Refresh details modal view
+      detailsTitle.textContent = title;
+      detailsAuthor.textContent = author || "Unknown Author";
+      detailsNarrator.textContent = narrator ? `Narrated by: ${narrator}` : "Narrator: -";
+      if (detailsSeries) {
+        if (series) {
+          detailsSeries.textContent = `Series: ${series}${series_sequence ? ` #${series_sequence}` : ""}`;
+          detailsSeries.style.display = "block";
+        } else {
+          detailsSeries.textContent = "";
+          detailsSeries.style.display = "none";
+        }
+      }
+
+      closeEditMetaModal();
+      await populateSeriesDropdown();
+      renderLibrary();
+      if (currentView === "history") {
+        loadHistoryAndStats();
+      }
+    } catch (err) {
+      alert("Error saving metadata: " + err.message);
+    } finally {
+      editMetaSave.disabled = false;
+      editMetaSave.textContent = originalText;
     }
   });
 }
@@ -771,6 +1060,7 @@ async function loadHistoryAndStats() {
             <div class="history-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
             <div class="history-meta">
               <span>${escapeHtml(item.author || "Unknown")}</span>
+              ${item.series ? `<span>&bull;</span><span style="color: var(--accent); font-weight: 500;">${escapeHtml(item.series)}${item.series_sequence ? ` #${escapeHtml(item.series_sequence)}` : ""}</span>` : ""}
               <span>&bull;</span>
               <span>${formatTime(item.duration)}</span>
               <span>&bull;</span>
@@ -1558,6 +1848,11 @@ function openUploadModal() {
   if (uploadFileInput) uploadFileInput.value = "";
   if (uploadFileInfo) uploadFileInfo.style.display = "none";
   if (uploadProgressContainer) uploadProgressContainer.style.display = "none";
+  if (uploadMetadataFields) uploadMetadataFields.style.display = "none";
+  if (uploadSeries) uploadSeries.value = "";
+  if (uploadSequence) uploadSequence.value = "";
+  if (uploadTitle) uploadTitle.value = "";
+  if (uploadAuthor) uploadAuthor.value = "";
   if (uploadSubmit) {
     uploadSubmit.disabled = true;
     uploadSubmit.textContent = "Start Upload";
@@ -1568,6 +1863,11 @@ function openUploadModal() {
 
 function closeUploadModal() {
   uploadBackdrop.classList.remove("open");
+  if (uploadMetadataFields) uploadMetadataFields.style.display = "none";
+  if (uploadSeries) uploadSeries.value = "";
+  if (uploadSequence) uploadSequence.value = "";
+  if (uploadTitle) uploadTitle.value = "";
+  if (uploadAuthor) uploadAuthor.value = "";
 }
 
 if (btnUpload) btnUpload.addEventListener("click", openUploadModal);
@@ -1630,6 +1930,10 @@ function handleSelectedUploadFile(file) {
   uploadFilename.textContent = file.name;
   uploadFilesize.textContent = formatBytes(file.size);
   uploadFileInfo.style.display = "block";
+  if (uploadMetadataFields) uploadMetadataFields.style.display = "block";
+  if (uploadTitle && !uploadTitle.value) {
+    uploadTitle.value = file.name.replace(/\.[^/.]+$/, "");
+  }
   uploadSubmit.disabled = false;
 }
 
@@ -1647,6 +1951,18 @@ if (uploadSubmit) {
 
     const formData = new FormData();
     formData.append("file", selectedUploadFile);
+    if (uploadSeries && uploadSeries.value.trim()) {
+      formData.append("series", uploadSeries.value.trim());
+    }
+    if (uploadSequence && uploadSequence.value.trim()) {
+      formData.append("series_sequence", uploadSequence.value.trim());
+    }
+    if (uploadTitle && uploadTitle.value.trim()) {
+      formData.append("title", uploadTitle.value.trim());
+    }
+    if (uploadAuthor && uploadAuthor.value.trim()) {
+      formData.append("author", uploadAuthor.value.trim());
+    }
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/books/upload", true);
@@ -1762,6 +2078,13 @@ if (filterChips) {
   });
 }
 
+if (librarySeriesFilter) {
+  librarySeriesFilter.addEventListener("change", () => {
+    currentSeriesFilter = librarySeriesFilter.value || "all";
+    renderLibrary();
+  });
+}
+
 if (librarySort) {
   librarySort.addEventListener("change", () => {
     currentSort = librarySort.value || "recent";
@@ -1773,9 +2096,11 @@ if (btnResetFilters) {
   btnResetFilters.addEventListener("click", () => {
     currentSearchQuery = "";
     currentFilter = "all";
+    currentSeriesFilter = "all";
     currentSort = "recent";
     if (librarySearch) librarySearch.value = "";
     if (btnSearchClear) btnSearchClear.style.display = "none";
+    if (librarySeriesFilter) librarySeriesFilter.value = "all";
     if (librarySort) librarySort.value = "recent";
     if (filterChips) {
       filterChips.forEach(c => {

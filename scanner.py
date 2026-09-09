@@ -276,7 +276,9 @@ def parse_chapters_with_ffprobe(file_path: str) -> List[Dict[str, Any]]:
     return chapters
 
 
-def scan_file(file_path: Path, uploaded_by: Optional[str] = None, force: bool = False) -> Optional[Dict[str, Any]]:
+def scan_file(file_path: Path, uploaded_by: Optional[str] = None, force: bool = False,
+              title_override: Optional[str] = None, author_override: Optional[str] = None,
+              series_override: Optional[str] = None, series_sequence_override: Optional[str] = None) -> Optional[Dict[str, Any]]:
     if not file_path.is_file() or file_path.suffix.lower() not in [".m4b", ".m4a", ".mp4"]:
         return None
         
@@ -284,7 +286,7 @@ def scan_file(file_path: Path, uploaded_by: Optional[str] = None, force: bool = 
     file_size = file_path.stat().st_size
     
     # Fast incremental skip: if already in database with identical size, don't re-probe or re-extract
-    if not force and is_book_indexed(book_id, file_size):
+    if not force and is_book_indexed(book_id, file_size) and not any([title_override, author_override, series_override, series_sequence_override]):
         return {"id": book_id, "skipped": True}
         
     title = file_path.stem
@@ -294,6 +296,8 @@ def scan_file(file_path: Path, uploaded_by: Optional[str] = None, force: bool = 
     duration = 0.0
     cover_path = None
     chapters = []
+    series = series_override.strip() if series_override and series_override.strip() else None
+    series_sequence = series_sequence_override.strip() if series_sequence_override and series_sequence_override.strip() else None
     
     # 1. Try ffprobe first (handles QuickTime text chapter tracks + Nero chpl atoms)
     chapters = parse_chapters_with_ffprobe(str(file_path))
@@ -335,6 +339,28 @@ def scan_file(file_path: Path, uploaded_by: Optional[str] = None, force: bool = 
                 description = str(tags["desc"][0])
             elif "\xa9des" in tags and tags["\xa9des"]:
                 description = str(tags["\xa9des"][0])
+
+            # Series Name (Movement name or iTunes SERIES tag)
+            if not series:
+                if "\xa9mvn" in tags and tags["\xa9mvn"]:
+                    series = str(tags["\xa9mvn"][0]).strip()
+                elif "----:com.apple.iTunes:SERIES" in tags:
+                    s_val = tags["----:com.apple.iTunes:SERIES"][0]
+                    series = (s_val.decode("utf-8", errors="replace") if isinstance(s_val, bytes) else str(s_val)).strip()
+                elif "----:com.apple.iTunes:series" in tags:
+                    s_val = tags["----:com.apple.iTunes:series"][0]
+                    series = (s_val.decode("utf-8", errors="replace") if isinstance(s_val, bytes) else str(s_val)).strip()
+
+            # Series Sequence (Movement index or iTunes SERIES-PART tag)
+            if not series_sequence:
+                if "\xa9mvi" in tags and tags["\xa9mvi"]:
+                    series_sequence = str(tags["\xa9mvi"][0]).strip()
+                elif "----:com.apple.iTunes:SERIES-PART" in tags:
+                    p_val = tags["----:com.apple.iTunes:SERIES-PART"][0]
+                    series_sequence = (p_val.decode("utf-8", errors="replace") if isinstance(p_val, bytes) else str(p_val)).strip()
+                elif "----:com.apple.iTunes:series-part" in tags:
+                    p_val = tags["----:com.apple.iTunes:series-part"][0]
+                    series_sequence = (p_val.decode("utf-8", errors="replace") if isinstance(p_val, bytes) else str(p_val)).strip()
                 
             # Embedded Cover Art
             if "covr" in tags and tags["covr"]:
@@ -348,6 +374,12 @@ def scan_file(file_path: Path, uploaded_by: Optional[str] = None, force: bool = 
         except Exception as e:
             print(f"[Scanner] Warning reading tags from {file_path.name}: {e}")
             
+    # Apply explicit overrides if supplied
+    if title_override and title_override.strip():
+        title = title_override.strip()
+    if author_override and author_override.strip():
+        author = author_override.strip()
+
     # If no duration was detected from mutagen, fallback estimate or 0
     # Also adjust last chapter end to duration
     if duration > 0 and chapters:
@@ -375,7 +407,9 @@ def scan_file(file_path: Path, uploaded_by: Optional[str] = None, force: bool = 
         "file_size": file_size,
         "cover_path": cover_path,
         "chapters": chapters,
-        "uploaded_by": uploaded_by
+        "uploaded_by": uploaded_by,
+        "series": series,
+        "series_sequence": series_sequence
     }
     
     upsert_book(book_data)

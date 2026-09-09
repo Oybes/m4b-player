@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, Response, BackgroundTasks, Depends, Cookie, File, UploadFile
+from fastapi import FastAPI, HTTPException, Request, Response, BackgroundTasks, Depends, Cookie, File, UploadFile, Form
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -28,25 +28,26 @@ async def lifespan(app: FastAPI):
     
     # If setup was already completed, run library scan
     if config.is_setup_completed():
-        scan_dir = cfg.get("audiobooks_dir")
-        if scan_dir and os.path.exists(scan_dir):
-            print(f"[Lifespan] Scanning audiobooks from: {scan_dir}")
-            scanner.scan_directory(Path(scan_dir))
+        print(f"[Lifespan] Scanning audiobooks from: {audiobooks_dir}")
+        scanner.scan_directory(audiobooks_dir)
         
     yield
 
-app = FastAPI(title="M4B Audiobook Server", lifespan=lifespan)
+app = FastAPI(title="M4B Audiobook Streamer", lifespan=lifespan)
 
-# Helper Dependency for Auth & Roles
+# Helper functions
 def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
-    token = request.cookies.get("session_token")
+    # Priority: Bearer token header -> session_token cookie -> token query param
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        
     if not token:
-        # Check Authorization header (Bearer token) or query parameter (useful for audio element stream)
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
-        elif "token" in request.query_params:
-            token = request.query_params["token"]
+        token = request.cookies.get("session_token")
+        
+    if not token:
+        token = request.query_params.get("token")
             
     if not token:
         return None
@@ -104,6 +105,13 @@ class EnrichChaptersPayload(BaseModel):
     titles: Optional[List[str]] = None
     chapters: Optional[List[dict]] = None
     write_to_file: Optional[bool] = False
+
+class UpdateMetadataPayload(BaseModel):
+    title: Optional[str] = None
+    author: Optional[str] = None
+    narrator: Optional[str] = None
+    series: Optional[str] = None
+    series_sequence: Optional[str] = None
 
 # Setup & Onboarding Endpoints
 @app.get("/api/setup/status")
@@ -525,8 +533,42 @@ def trigger_scan(background_tasks: BackgroundTasks, user: Dict[str, Any] = Depen
     background_tasks.add_task(scanner.scan_directory, books_path)
     return {"message": "Scan triggered in background"}
 
+@app.get("/api/series")
+def list_series(user: Dict[str, Any] = Depends(require_user)):
+    """List all unique series accessible to the user with book counts."""
+    return {"series": database.get_all_series(user_id=user["id"])}
+
+@app.put("/api/books/{book_id}/metadata")
+def update_book_metadata(book_id: str, payload: UpdateMetadataPayload, user: Dict[str, Any] = Depends(require_user)):
+    """Update title, author, narrator, series, and series sequence for an audiobook."""
+    book = database.get_book_by_id(book_id, user_id=user["id"])
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+        
+    is_admin = user.get("role") == "admin"
+    is_uploader = book.get("uploaded_by") == user["id"]
+    if not (is_admin or is_uploader):
+        raise HTTPException(status_code=403, detail="You do not have permission to edit this audiobook's metadata")
+        
+    updated = database.update_book_metadata(
+        book_id=book_id,
+        title=payload.title,
+        author=payload.author,
+        narrator=payload.narrator,
+        series=payload.series,
+        series_sequence=payload.series_sequence
+    )
+    return {"status": "ok", "book": updated}
+
 @app.post("/api/books/upload")
-async def upload_audiobook(file: UploadFile = File(...), user: Dict[str, Any] = Depends(require_user)):
+async def upload_audiobook(
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    author: Optional[str] = Form(None),
+    series: Optional[str] = Form(None),
+    series_sequence: Optional[str] = Form(None),
+    user: Dict[str, Any] = Depends(require_user)
+):
     """Upload an .m4b / .m4a / .mp4 audiobook with streaming chunked write and automatic indexing."""
     if not user.get("can_upload") and user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="You do not have permission to upload audiobooks")
@@ -561,7 +603,14 @@ async def upload_audiobook(file: UploadFile = File(...), user: Dict[str, Any] = 
         
     # Index the uploaded file
     try:
-        book_data = scanner.scan_file(target_path, uploaded_by=user["id"])
+        book_data = scanner.scan_file(
+            target_path, 
+            uploaded_by=user["id"],
+            title_override=title,
+            author_override=author,
+            series_override=series,
+            series_sequence_override=series_sequence
+        )
         if not book_data:
             if target_path.exists():
                 target_path.unlink()

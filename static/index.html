@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="apple-touch-icon" sizes="512x512" href="/static/icon-512.png">
   <link rel="manifest" href="/static/manifest.json">
-  <link rel="stylesheet" href="/static/style.css?v=2.5">
+  <link rel="stylesheet" href="/static/style.css?v=2.6">
 </head>
 <body>
 
@@ -111,7 +111,7 @@
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
-          <input type="text" id="library-search" class="search-input" placeholder="Search title, author, narrator... (Press '/' to focus)" autocomplete="off">
+          <input type="text" id="library-search" class="search-input" placeholder="Search title, author, series, narrator... (Press '/' to focus)" autocomplete="off">
           <button id="btn-search-clear" class="btn-search-clear" style="display: none;" title="Clear search">&times;</button>
         </div>
 
@@ -126,6 +126,18 @@
             <button class="filter-chip" id="filter-chip-uploads" data-filter="uploads" style="display: none;">My Uploads</button>
           </div>
 
+          <!-- Series Filter Dropdown -->
+          <div class="sort-wrapper series-filter-wrapper" id="series-filter-wrapper" style="display: none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            </svg>
+            <select id="library-series-filter" class="sort-select" title="Filter by Series">
+              <option value="all">All Series</option>
+              <option value="none">Standalone (No Series)</option>
+            </select>
+          </div>
+
           <!-- Sort Select -->
           <div class="sort-wrapper">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -135,6 +147,8 @@
             </svg>
             <select id="library-sort" class="sort-select">
               <option value="recent">Recently Played</option>
+              <option value="series-asc">Series (A &rarr; Z)</option>
+              <option value="series-desc">Series (Z &rarr; A)</option>
               <option value="title-asc">Title (A &rarr; Z)</option>
               <option value="title-desc">Title (Z &rarr; A)</option>
               <option value="author-asc">Author (A &rarr; Z)</option>
@@ -373,6 +387,7 @@
           <img id="details-cover" class="details-cover-img" src="/api/books/cover" alt="Cover">
           <div class="details-meta-col">
             <div id="details-narrator" class="details-meta-item">Narrated by: -</div>
+            <div id="details-series" class="details-meta-item" style="display: none; color: var(--accent); font-weight: 600;">Series: -</div>
             <div id="details-duration" class="details-meta-item">Duration: 0:00:00</div>
             <div id="details-progress-text" class="details-meta-item" style="color: var(--accent); font-weight: 600;">Your Progress: 0%</div>
             
@@ -381,6 +396,10 @@
               <button id="btn-details-play" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                 <span id="btn-details-play-text">Play Audiobook</span>
+              </button>
+              <button id="btn-details-edit-meta" class="btn-secondary" style="display: none; align-items: center; gap: 6px;" title="Edit Title, Author, Series">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                <span>Edit Info</span>
               </button>
               <button id="btn-details-enrich" class="btn-secondary" style="display: flex; align-items: center; gap: 6px;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
@@ -406,6 +425,47 @@
             <!-- Chapters rendered here -->
           </ul>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT BOOK METADATA MODAL -->
+  <div id="edit-meta-backdrop" class="modal-backdrop">
+    <div class="modal" style="max-width: 480px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Edit Audiobook Info</h3>
+          <p class="modal-subtitle">Update series, author, or title</p>
+        </div>
+        <button id="edit-meta-close" class="drawer-close">&times;</button>
+      </div>
+      <div class="modal-body" style="gap: 14px;">
+        <div class="form-group">
+          <label class="form-label">Book Title</label>
+          <input type="text" id="edit-meta-title" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Author</label>
+          <input type="text" id="edit-meta-author" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Narrator</label>
+          <input type="text" id="edit-meta-narrator" class="form-input">
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <div class="form-group" style="flex: 2;">
+            <label class="form-label">Series Name</label>
+            <input type="text" id="edit-meta-series" class="form-input" placeholder="e.g. Dungeon Crawler Carl" list="existing-series-list">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label">Book / Part #</label>
+            <input type="text" id="edit-meta-sequence" class="form-input" placeholder="e.g. 1">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="edit-meta-cancel" class="btn-secondary">Cancel</button>
+        <button id="edit-meta-save" class="btn-primary">Save Changes</button>
       </div>
     </div>
   </div>
@@ -646,6 +706,23 @@
           </div>
         </div>
 
+        <!-- Optional Series & Metadata Inputs -->
+        <div id="upload-metadata-fields" style="display: none; flex-direction: column; gap: 10px;">
+          <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-top: 2px;">Series & Info (Optional - auto-detected if empty)</div>
+          <div style="display: flex; gap: 8px;">
+            <div style="flex: 2;">
+              <input type="text" id="upload-series" class="form-input" placeholder="Series name (e.g. Dungeon Crawler Carl)" list="existing-series-list">
+            </div>
+            <div style="flex: 1;">
+              <input type="text" id="upload-sequence" class="form-input" placeholder="Book # (e.g. 1)">
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="upload-title" class="form-input" placeholder="Custom Title (optional)" style="flex: 1;">
+            <input type="text" id="upload-author" class="form-input" placeholder="Custom Author (optional)" style="flex: 1;">
+          </div>
+        </div>
+
         <div id="upload-progress-container" style="display: none;">
           <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 6px;">
             <span id="upload-status-text">Uploading...</span>
@@ -663,6 +740,8 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.5"></script>
+  <datalist id="existing-series-list"></datalist>
+
+  <script src="/static/app.js?v=2.6"></script>
 </body>
 </html>
