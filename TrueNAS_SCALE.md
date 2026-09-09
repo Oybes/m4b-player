@@ -148,3 +148,24 @@ If you reorganize your audiobooks folder or want to wipe all records for a clean
 ```bash
 docker exec -it m4b-player python rebuild_db.py
 ```
+
+---
+
+## 10. Reverse Proxies (Nginx Proxy Manager, Cloudflare, Traefik)
+
+The player natively uses **resumable chunked streaming uploads (1MB chunks)** so uploads of any size (even 2GB+ audiobooks) work seamlessly without hitting proxy timeouts or buffer limits.
+
+If you expose the player via **Nginx Proxy Manager** or **Nginx**, you can optionally also increase Nginx's body limit and disable buffering for optimal streaming performance:
+
+### In Nginx Proxy Manager (NPM):
+Under your Proxy Host $\rightarrow$ **Advanced** tab $\rightarrow$ **Custom Nginx Configuration**, add:
+```nginx
+client_max_body_size 0;
+proxy_request_buffering off;
+proxy_read_timeout 600s;
+proxy_send_timeout 600s;
+```
+
+### In Cloudflare:
+Because the app automatically slices files into safe ~1MB chunks, uploads work smoothly through Cloudflare Tunnels without exceeding Cloudflare's 100MB per-request ceiling.
+

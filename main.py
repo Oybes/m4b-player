@@ -560,6 +560,116 @@ def update_book_metadata(book_id: str, payload: UpdateMetadataPayload, user: Dic
     )
     return {"status": "ok", "book": updated}
 
+@app.post("/api/books/upload/chunk")
+async def upload_audiobook_chunk(
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    filename: str = Form(...),
+    offset: int = Form(0),
+    chunk: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    author: Optional[str] = Form(None),
+    series: Optional[str] = Form(None),
+    series_sequence: Optional[str] = Form(None),
+    user: Dict[str, Any] = Depends(require_user)
+):
+    """Upload audiobook in safe <=1MB chunks to bypass any reverse proxy/Nginx body size limits."""
+    if not user.get("can_upload") and user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="You do not have permission to upload audiobooks")
+
+    ext = Path(filename).suffix.lower()
+    if ext not in [".m4b", ".m4a", ".mp4"]:
+        raise HTTPException(status_code=400, detail="Only .m4b, .m4a, and .mp4 files are supported")
+
+    clean_upload_id = "".join(c for c in upload_id if c.isalnum() or c in "-_").strip()
+    if not clean_upload_id:
+        raise HTTPException(status_code=400, detail="Invalid upload ID")
+
+    data_dir = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
+    uploads_dir = data_dir / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    part_path = uploads_dir / f"temp_{clean_upload_id}.part"
+
+    try:
+        chunk_bytes = await chunk.read()
+        mode = "wb" if (chunk_index == 0 and not part_path.exists()) else ("r+b" if part_path.exists() else "w+b")
+        with open(part_path, mode) as f:
+            f.seek(offset)
+            f.write(chunk_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to write chunk {chunk_index}: {str(e)}")
+
+    # Check if this was the last chunk
+    if chunk_index >= total_chunks - 1:
+        clean_stem = "".join(c for c in Path(filename).stem if c.isalnum() or c in " -_().").strip() or "audiobook"
+        target_path = uploads_dir / f"{clean_stem}{ext}"
+        if target_path.exists():
+            import secrets
+            target_path = uploads_dir / f"{clean_stem}_{secrets.token_hex(3)}{ext}"
+
+        try:
+            if target_path.exists():
+                target_path.unlink()
+            part_path.replace(target_path)
+        except Exception as e:
+            if part_path.exists():
+                try:
+                    part_path.unlink()
+                except Exception:
+                    pass
+            raise HTTPException(status_code=500, detail=f"Failed to finalize uploaded file: {str(e)}")
+
+        # Index the completed audiobook file
+        try:
+            book_data = scanner.scan_file(
+                target_path,
+                uploaded_by=user["id"],
+                title_override=title,
+                author_override=author,
+                series_override=series,
+                series_sequence_override=series_sequence
+            )
+            if not book_data:
+                if target_path.exists():
+                    target_path.unlink()
+                raise HTTPException(status_code=400, detail="Could not read or parse audio metadata from uploaded file")
+
+            full_book = database.get_book_by_id(book_data["id"], user_id=user["id"])
+            return {
+                "status": "complete",
+                "message": f"Successfully uploaded '{book_data['title']}'!",
+                "book": full_book
+            }
+        except Exception as e:
+            if target_path.exists():
+                try:
+                    target_path.unlink()
+                except Exception:
+                    pass
+            raise HTTPException(status_code=500, detail=f"Error indexing uploaded file: {str(e)}")
+
+    return {
+        "status": "chunk_saved",
+        "chunk_index": chunk_index,
+        "total_chunks": total_chunks
+    }
+
+@app.delete("/api/books/upload/cancel")
+def cancel_upload(upload_id: str, user: Dict[str, Any] = Depends(require_user)):
+    """Cancel an in-progress chunked upload and clean up temp files."""
+    clean_upload_id = "".join(c for c in upload_id if c.isalnum() or c in "-_").strip()
+    if clean_upload_id:
+        data_dir = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
+        part_path = data_dir / "uploads" / f"temp_{clean_upload_id}.part"
+        if part_path.exists():
+            try:
+                part_path.unlink()
+            except Exception:
+                pass
+    return {"status": "ok"}
+
 @app.post("/api/books/upload")
 async def upload_audiobook(
     file: UploadFile = File(...),

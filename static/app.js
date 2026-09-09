@@ -1843,8 +1843,13 @@ if (btnAdminRebuildDb) {
 // -------------------------------------------------------------
 let selectedUploadFile = null;
 
+let currentUploadController = null;
+let currentUploadId = null;
+
 function openUploadModal() {
   selectedUploadFile = null;
+  currentUploadController = null;
+  currentUploadId = null;
   if (uploadFileInput) uploadFileInput.value = "";
   if (uploadFileInfo) uploadFileInfo.style.display = "none";
   if (uploadProgressContainer) uploadProgressContainer.style.display = "none";
@@ -1862,6 +1867,14 @@ function openUploadModal() {
 }
 
 function closeUploadModal() {
+  if (currentUploadController) {
+    currentUploadController.abort();
+    if (currentUploadId) {
+      fetch(`/api/books/upload/cancel?upload_id=${encodeURIComponent(currentUploadId)}`, { method: "DELETE" }).catch(() => {});
+    }
+    currentUploadController = null;
+    currentUploadId = null;
+  }
   uploadBackdrop.classList.remove("open");
   if (uploadMetadataFields) uploadMetadataFields.style.display = "none";
   if (uploadSeries) uploadSeries.value = "";
@@ -1938,83 +1951,117 @@ function handleSelectedUploadFile(file) {
 }
 
 if (uploadSubmit) {
-  uploadSubmit.addEventListener("click", () => {
+  uploadSubmit.addEventListener("click", async () => {
     if (!selectedUploadFile) return;
 
+    const file = selectedUploadFile;
+    // 1000 KB chunk safely stays under any 1MB / 1m reverse proxy limit (e.g. Nginx, Cloudflare)
+    const CHUNK_SIZE = 1000 * 1024;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const uploadId = "up_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
+    currentUploadId = uploadId;
+    currentUploadController = new AbortController();
+
     uploadSubmit.disabled = true;
-    uploadCancel.disabled = true;
+    uploadCancel.disabled = false;
     uploadDropzone.style.display = "none";
+    if (uploadMetadataFields) uploadMetadataFields.style.display = "none";
     uploadProgressContainer.style.display = "block";
     uploadProgressFill.style.width = "0%";
     uploadPctText.textContent = "0%";
-    uploadStatusText.textContent = "Starting upload...";
+    uploadStatusText.textContent = "Starting chunked upload...";
 
-    const formData = new FormData();
-    formData.append("file", selectedUploadFile);
-    if (uploadSeries && uploadSeries.value.trim()) {
-      formData.append("series", uploadSeries.value.trim());
-    }
-    if (uploadSequence && uploadSequence.value.trim()) {
-      formData.append("series_sequence", uploadSequence.value.trim());
-    }
-    if (uploadTitle && uploadTitle.value.trim()) {
-      formData.append("title", uploadTitle.value.trim());
-    }
-    if (uploadAuthor && uploadAuthor.value.trim()) {
-      formData.append("author", uploadAuthor.value.trim());
-    }
+    const seriesVal = (uploadSeries ? uploadSeries.value : "").trim();
+    const sequenceVal = (uploadSequence ? uploadSequence.value : "").trim();
+    const titleVal = (uploadTitle ? uploadTitle.value : "").trim();
+    const authorVal = (uploadAuthor ? uploadAuthor.value : "").trim();
 
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/books/upload", true);
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      if (currentUploadController.signal.aborted) {
+        return;
+      }
 
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        uploadProgressFill.style.width = `${pct}%`;
-        uploadPctText.textContent = `${pct}%`;
-        if (pct < 100) {
-          uploadStatusText.textContent = `Uploading: ${formatBytes(e.loaded)} / ${formatBytes(e.total)} (${pct}%)`;
-        } else {
-          uploadStatusText.textContent = "Upload complete! Indexing chapters & artwork...";
+      const start = chunkIndex * CHUNK_SIZE;
+      const end = Math.min(file.size, start + CHUNK_SIZE);
+      const chunkBlob = file.slice(start, end);
+      const isLastChunk = (chunkIndex === totalChunks - 1);
+
+      const formData = new FormData();
+      formData.append("upload_id", uploadId);
+      formData.append("chunk_index", chunkIndex.toString());
+      formData.append("total_chunks", totalChunks.toString());
+      formData.append("offset", start.toString());
+      formData.append("filename", file.name);
+      formData.append("chunk", chunkBlob, file.name);
+
+      if (isLastChunk) {
+        if (seriesVal) formData.append("series", seriesVal);
+        if (sequenceVal) formData.append("series_sequence", sequenceVal);
+        if (titleVal) formData.append("title", titleVal);
+        if (authorVal) formData.append("author", authorVal);
+      }
+
+      const pct = Math.round((start / file.size) * 100);
+      uploadProgressFill.style.width = `${pct}%`;
+      uploadPctText.textContent = `${pct}%`;
+      uploadStatusText.textContent = isLastChunk
+        ? `Uploading final part and indexing chapters & artwork...`
+        : `Uploading: ${formatBytes(start)} / ${formatBytes(file.size)} (${pct}%) • Part ${chunkIndex + 1}/${totalChunks}`;
+
+      let success = false;
+      let lastError = null;
+
+      // Retry up to 3 times per chunk in case of transient network drop
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        if (currentUploadController.signal.aborted) return;
+        try {
+          const res = await fetch("/api/books/upload/chunk", {
+            method: "POST",
+            body: formData,
+            signal: currentUploadController.signal
+          });
+
+          if (!res.ok) {
+            let errDetail = `Server error (HTTP ${res.status})`;
+            try {
+              const errData = await res.json();
+              if (errData.detail) errDetail = errData.detail;
+            } catch (e) {}
+            throw new Error(errDetail);
+          }
+
+          const data = await res.json();
+          if (isLastChunk) {
+            uploadProgressFill.style.width = "100%";
+            uploadPctText.textContent = "100%";
+            uploadStatusText.textContent = "Upload complete!";
+            closeUploadModal();
+            alert(data.message || "Audiobook uploaded successfully!");
+            await loadLibrary();
+            return;
+          }
+
+          success = true;
+          break;
+        } catch (err) {
+          if (currentUploadController.signal.aborted) return;
+          lastError = err;
+          console.warn(`Chunk ${chunkIndex + 1} attempt ${attempt} failed:`, err);
+          if (attempt < 3) {
+            await new Promise(r => setTimeout(r, 1000));
+          }
         }
       }
-    };
 
-    xhr.onload = () => {
-      uploadCancel.disabled = false;
-      uploadSubmit.disabled = false;
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const resp = JSON.parse(xhr.responseText);
-          closeUploadModal();
-          alert(resp.message || "Audiobook uploaded successfully!");
-          loadLibrary();
-        } catch (err) {
-          closeUploadModal();
-          loadLibrary();
-        }
-      } else {
-        let errMsg = "Upload failed";
-        try {
-          const errData = JSON.parse(xhr.responseText);
-          errMsg = errData.detail || errMsg;
-        } catch (e) {}
-        alert("Upload error: " + errMsg);
+      if (!success) {
+        alert(`Upload stopped on part ${chunkIndex + 1} of ${totalChunks}: ${lastError ? lastError.message : "Network error"}`);
         uploadDropzone.style.display = "flex";
+        if (uploadMetadataFields) uploadMetadataFields.style.display = "block";
         uploadProgressContainer.style.display = "none";
         uploadSubmit.disabled = false;
+        return;
       }
-    };
-
-    xhr.onerror = () => {
-      uploadCancel.disabled = false;
-      uploadSubmit.disabled = false;
-      uploadDropzone.style.display = "flex";
-      uploadProgressContainer.style.display = "none";
-      alert("Network error occurred during upload.");
-    };
-
-    xhr.send(formData);
+    }
   });
 }
 
