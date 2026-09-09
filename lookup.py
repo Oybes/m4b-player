@@ -108,8 +108,19 @@ def search_goodreads(query: str) -> List[Dict[str, Any]]:
         print(f"[Lookup] Goodreads search warning: {e}")
     return results
 
+def clean_html_text(raw_html: str) -> str:
+    """Helper to convert HTML summaries to clean formatted text."""
+    if not raw_html:
+        return ""
+    text = re.sub(r'<\s*br\s*/?>', '\n', raw_html, flags=re.IGNORECASE)
+    text = re.sub(r'</?\s*p\s*>', '\n\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = text.replace("&quot;", '"').replace("&apos;", "'").replace("&#39;", "'").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&nbsp;", " ")
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
 def search_audible(title: str, author: str = "") -> List[Dict[str, Any]]:
-    """Search Audible catalog for candidate audiobooks, including narrators, series, and cover art."""
+    """Search Audible catalog for candidate audiobooks, including narrators, series, cover art, and rich metadata."""
     results = []
     try:
         query = title.strip()
@@ -117,7 +128,7 @@ def search_audible(title: str, author: str = "") -> List[Dict[str, Any]]:
             query = f"{query} {author.strip()}"
             
         encoded = urllib.parse.quote(query)
-        url = f"https://api.audible.com/1.0/catalog/products?title={encoded}&num_results=6&response_groups=product_desc,contributors,media,series"
+        url = f"https://api.audible.com/1.0/catalog/products?title={encoded}&num_results=6&response_groups=product_desc,contributors,media,series,product_attrs,category_ladders"
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         
         with urllib.request.urlopen(req, timeout=8) as resp:
@@ -144,6 +155,35 @@ def search_audible(title: str, author: str = "") -> List[Dict[str, Any]]:
                                 cover_url = images[k]
                                 break
 
+                    # Publisher
+                    publisher = (p.get("publisher_name") or "").strip()
+
+                    # Publish Year
+                    raw_date = p.get("release_date") or p.get("issue_date") or p.get("publication_datetime") or ""
+                    publish_year = ""
+                    if raw_date and len(raw_date) >= 4 and raw_date[:4].isdigit():
+                        publish_year = raw_date[:4]
+
+                    # Genres / Categories
+                    genre_candidates = []
+                    for cl in p.get("category_ladders", []):
+                        ladder = cl.get("ladder", [])
+                        if ladder:
+                            names = [item["name"].strip() for item in ladder if item.get("name") and item["name"].strip() not in ("Genres", "Categories")]
+                            if names:
+                                genre_candidates.append(names[-1])
+                    seen_g = set()
+                    unique_genres = []
+                    for g in genre_candidates:
+                        if g.lower() not in seen_g:
+                            seen_g.add(g.lower())
+                            unique_genres.append(g)
+                    genres_str = ", ".join(unique_genres[:4])
+
+                    # Description / Synopsis
+                    raw_summary = p.get("publisher_summary") or p.get("merchandising_summary") or p.get("summary") or ""
+                    desc = clean_html_text(raw_summary)
+
                     asin = p.get("asin")
                     if asin:
                         results.append({
@@ -152,6 +192,10 @@ def search_audible(title: str, author: str = "") -> List[Dict[str, Any]]:
                             "narrator": ", ".join(narrators) if narrators else "",
                             "series": series_name,
                             "series_sequence": series_seq,
+                            "publish_year": publish_year,
+                            "publisher": publisher,
+                            "genres": genres_str,
+                            "description": desc,
                             "cover_url": cover_url,
                             "asin": asin,
                             "source": "Audible",
@@ -201,12 +245,23 @@ def search_google_books(query: str, api_key: Optional[str] = None) -> List[Dict[
                     if cover_url.startswith("http://"):
                         cover_url = cover_url.replace("http://", "https://")
 
+                    publisher = (vi.get("publisher") or "").strip()
+                    raw_date = (vi.get("publishedDate") or "").strip()
+                    publish_year = raw_date[:4] if len(raw_date) >= 4 and raw_date[:4].isdigit() else raw_date
+                    categories = vi.get("categories", [])
+                    genres_str = ", ".join([c.strip() for c in categories if c.strip()]) if isinstance(categories, list) else str(categories)
+                    desc = clean_html_text(vi.get("description", "") or "")
+
                     results.append({
                         "title": title,
                         "author": ", ".join(authors) if authors else "Unknown Author",
                         "narrator": "",
                         "series": series_name,
                         "series_sequence": series_seq,
+                        "publish_year": publish_year,
+                        "publisher": publisher,
+                        "genres": genres_str,
+                        "description": desc,
                         "cover_url": cover_url,
                         "source": "Google Books",
                         "url": vi.get("infoLink", "")
@@ -265,6 +320,14 @@ def search_book_matches(query: str, author: str = "") -> List[Dict[str, Any]]:
             score += 3
         if item.get("narrator"):
             score += 3
+        if item.get("description"):
+            score += 3
+        if item.get("genres"):
+            score += 2
+        if item.get("publisher"):
+            score += 2
+        if item.get("publish_year"):
+            score += 1
         if item.get("source") == "Goodreads":
             score += 1
         return score

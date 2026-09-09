@@ -112,6 +112,10 @@ class UpdateMetadataPayload(BaseModel):
     narrator: Optional[str] = None
     series: Optional[str] = None
     series_sequence: Optional[str] = None
+    publish_year: Optional[str] = None
+    publisher: Optional[str] = None
+    genres: Optional[str] = None
+    description: Optional[str] = None
     cover_url: Optional[str] = None
 
 # Setup & Onboarding Endpoints
@@ -566,7 +570,11 @@ def update_book_metadata(book_id: str, payload: UpdateMetadataPayload, user: Dic
         author=payload.author,
         narrator=payload.narrator,
         series=payload.series,
-        series_sequence=payload.series_sequence
+        series_sequence=payload.series_sequence,
+        publish_year=payload.publish_year,
+        publisher=payload.publisher,
+        genres=payload.genres,
+        description=payload.description
     )
 
     if payload.cover_url:

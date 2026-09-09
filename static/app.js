@@ -89,6 +89,27 @@ const btnDetailsEnrich = document.getElementById("btn-details-enrich");
 const btnDetailsReset = document.getElementById("btn-details-reset");
 const btnDetailsDelete = document.getElementById("btn-details-delete");
 
+// Book Details Modal Rich Metadata Elements
+const detailsHeadingTitle = document.getElementById("details-heading-title");
+const detailsByAuthor = document.getElementById("details-by-author");
+const detailsAuthorText = document.getElementById("details-author-text");
+const detailsSeriesBadge = document.getElementById("details-series-badge");
+const detailsSeriesText = document.getElementById("details-series-text");
+const detailsValNarrator = document.getElementById("details-val-narrator");
+const detailsValYear = document.getElementById("details-val-year");
+const detailsValPublisher = document.getElementById("details-val-publisher");
+const detailsValGenres = document.getElementById("details-val-genres");
+const detailsValDuration = document.getElementById("details-val-duration");
+const detailsValSize = document.getElementById("details-val-size");
+const detailsProgressCard = document.getElementById("details-progress-card");
+const detailsProgressPct = document.getElementById("details-progress-pct");
+const detailsProgressBarFill = document.getElementById("details-progress-bar-fill");
+const detailsProgressTimeLeft = document.getElementById("details-progress-time-left");
+const detailsDescSection = document.getElementById("details-desc-section");
+const detailsDescription = document.getElementById("details-description");
+const btnDescToggle = document.getElementById("btn-desc-toggle");
+const btnToggleChaptersCollapse = document.getElementById("btn-toggle-chapters-collapse");
+
 // Edit Metadata Modal
 const editMetaBackdrop = document.getElementById("edit-meta-backdrop");
 const editMetaClose = document.getElementById("edit-meta-close");
@@ -99,6 +120,10 @@ const editMetaAuthor = document.getElementById("edit-meta-author");
 const editMetaNarrator = document.getElementById("edit-meta-narrator");
 const editMetaSeries = document.getElementById("edit-meta-series");
 const editMetaSequence = document.getElementById("edit-meta-sequence");
+const editMetaPublishYear = document.getElementById("edit-meta-publish-year");
+const editMetaPublisher = document.getElementById("edit-meta-publisher");
+const editMetaGenres = document.getElementById("edit-meta-genres");
+const editMetaDescription = document.getElementById("edit-meta-description");
 const btnEditMetaMatch = document.getElementById("btn-edit-meta-match");
 
 // Match Book Modal (Goodreads, Audible, Google Books)
@@ -212,6 +237,25 @@ function formatTime(seconds) {
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
   return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+function formatHumanDuration(seconds) {
+  if (isNaN(seconds) || seconds <= 0) return "-";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) {
+    return `${h} hr ${m} min`;
+  }
+  return `${m} min`;
+}
+
+function formatFileSize(bytes) {
+  if (!bytes || isNaN(bytes) || bytes <= 0) return "-";
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1000) {
+    return `${(mb / 1024).toFixed(2)} GB`;
+  }
+  return `${mb.toFixed(2)} MB`;
 }
 
 function escapeHtml(text) {
@@ -668,31 +712,75 @@ async function openBookDetails(bookId) {
     const book = await res.json();
     inspectedBook = book;
 
-    detailsTitle.textContent = book.title;
-    detailsAuthor.textContent = book.author || "Unknown Author";
-    detailsCover.src = book.cover_url || "/api/books/cover";
-    detailsNarrator.textContent = book.narrator ? `Narrated by: ${book.narrator}` : "Narrator: -";
-    detailsDuration.textContent = `Duration: ${formatTime(book.duration)}`;
+    if (detailsTitle) detailsTitle.textContent = book.title;
+    if (detailsHeadingTitle) detailsHeadingTitle.textContent = book.title;
+    if (detailsAuthor) detailsAuthor.textContent = book.author || "Unknown Author";
+    if (detailsAuthorText) detailsAuthorText.textContent = book.author || "Unknown Author";
+    if (detailsCover) detailsCover.src = book.cover_url || "/api/books/cover";
 
-    // Series info in details modal
-    if (detailsSeries) {
+    // Series badge in details modal
+    if (detailsSeriesBadge && detailsSeriesText) {
       if (book.series) {
-        detailsSeries.textContent = `Series: ${book.series}${book.series_sequence ? ` #${book.series_sequence}` : ""}`;
-        detailsSeries.style.display = "block";
+        detailsSeriesText.textContent = `${book.series}${book.series_sequence ? ` #${book.series_sequence}` : ""}`;
+        detailsSeriesBadge.style.display = "inline-flex";
       } else {
-        detailsSeries.textContent = "";
-        detailsSeries.style.display = "none";
+        detailsSeriesBadge.style.display = "none";
       }
     }
-    
+
+    // 2-Column Rich Metadata Grid
+    if (detailsValNarrator) detailsValNarrator.textContent = book.narrator || "-";
+    if (detailsValYear) detailsValYear.textContent = book.publish_year || "-";
+    if (detailsValPublisher) detailsValPublisher.textContent = book.publisher || "-";
+    if (detailsValGenres) detailsValGenres.textContent = book.genres || "-";
+    if (detailsValDuration) detailsValDuration.textContent = formatHumanDuration(book.duration);
+    if (detailsValSize) detailsValSize.textContent = formatFileSize(book.file_size);
+
+    // Progress Card
     const pos = book.progress?.position || 0;
-    const pct = book.duration > 0 ? Math.round((pos / book.duration) * 100) : 0;
-    detailsProgressText.textContent = `Your Progress: ${pct}% (${formatTime(pos)} of ${formatTime(book.duration)})`;
+    const dur = book.duration || 0;
+    const pct = dur > 0 ? Math.min(100, Math.round((pos / dur) * 100)) : 0;
+    const remainingSec = Math.max(0, dur - pos);
+
+    if (detailsProgressPct) detailsProgressPct.textContent = `${pct}%`;
+    if (detailsProgressBarFill) detailsProgressBarFill.style.width = `${pct}%`;
+    if (detailsProgressTimeLeft) {
+      if (pct >= 100 || (book.progress && book.progress.completed)) {
+        detailsProgressTimeLeft.textContent = "Completed";
+      } else if (pos > 0) {
+        detailsProgressTimeLeft.textContent = `${formatHumanDuration(remainingSec)} remaining`;
+      } else {
+        detailsProgressTimeLeft.textContent = "Not started";
+      }
+    }
+    if (detailsProgressText) {
+      detailsProgressText.textContent = `Your Progress: ${pct}% (${formatHumanDuration(remainingSec)} remaining)`;
+    }
 
     if (pos > 0) {
       btnDetailsPlayText.textContent = `Resume from ${formatTime(pos)}`;
     } else {
       btnDetailsPlayText.textContent = "Play Audiobook";
+    }
+
+    // Description / Synopsis Section
+    if (detailsDescSection && detailsDescription) {
+      const desc = (book.description || "").trim();
+      if (desc) {
+        detailsDescription.textContent = desc;
+        detailsDescription.classList.add("collapsed");
+        detailsDescSection.style.display = "block";
+        if (btnDescToggle) {
+          if (desc.length > 220 || desc.includes("\n\n")) {
+            btnDescToggle.style.display = "inline-flex";
+            btnDescToggle.textContent = "Read more";
+          } else {
+            btnDescToggle.style.display = "none";
+          }
+        }
+      } else {
+        detailsDescSection.style.display = "none";
+      }
     }
 
     // Edit Metadata button visibility (uploader or admin)
@@ -703,26 +791,21 @@ async function openBookDetails(bookId) {
 
     // Reset Progress button visibility
     if (btnDetailsReset) {
-      if (pos > 0) {
-        btnDetailsReset.style.display = "inline-flex";
-      } else {
-        btnDetailsReset.style.display = "none";
-      }
+      btnDetailsReset.style.display = pos > 0 ? "inline-flex" : "none";
     }
 
     // Delete Audiobook button visibility (uploader or admin)
     if (btnDetailsDelete) {
       const canDelete = currentUser && (currentUser.role === "admin" || (book.uploaded_by && book.uploaded_by === currentUser.id));
-      if (canDelete) {
-        btnDetailsDelete.style.display = "inline-flex";
-      } else {
-        btnDetailsDelete.style.display = "none";
-      }
+      btnDetailsDelete.style.display = canDelete ? "inline-flex" : "none";
     }
 
     // Render chapters list inside details
     detailsChapterCount.textContent = (book.chapters || []).length;
     detailsChapterList.innerHTML = "";
+    detailsChapterList.style.display = "block";
+    if (btnToggleChaptersCollapse) btnToggleChaptersCollapse.textContent = "Collapse";
+
     (book.chapters || []).forEach((c, idx) => {
       const li = document.createElement("li");
       li.className = "chapter-item";
@@ -763,6 +846,36 @@ if (btnDetailsPlay) {
   });
 }
 
+// Read more / Read less toggle for synopsis
+if (btnDescToggle) {
+  btnDescToggle.addEventListener("click", () => {
+    if (detailsDescription) {
+      if (detailsDescription.classList.contains("collapsed")) {
+        detailsDescription.classList.remove("collapsed");
+        btnDescToggle.textContent = "Read less";
+      } else {
+        detailsDescription.classList.add("collapsed");
+        btnDescToggle.textContent = "Read more";
+      }
+    }
+  });
+}
+
+// Collapse / Expand chapters list toggle
+if (btnToggleChaptersCollapse) {
+  btnToggleChaptersCollapse.addEventListener("click", () => {
+    if (detailsChapterList) {
+      if (detailsChapterList.style.display === "none") {
+        detailsChapterList.style.display = "block";
+        btnToggleChaptersCollapse.textContent = "Collapse";
+      } else {
+        detailsChapterList.style.display = "none";
+        btnToggleChaptersCollapse.textContent = "Expand";
+      }
+    }
+  });
+}
+
 // "Edit Info" (metadata & series) from details modal
 function openEditMetaModal(book) {
   if (!book) return;
@@ -771,6 +884,10 @@ function openEditMetaModal(book) {
   if (editMetaNarrator) editMetaNarrator.value = book.narrator || "";
   if (editMetaSeries) editMetaSeries.value = book.series || "";
   if (editMetaSequence) editMetaSequence.value = book.series_sequence || "";
+  if (editMetaPublishYear) editMetaPublishYear.value = book.publish_year || "";
+  if (editMetaPublisher) editMetaPublisher.value = book.publisher || "";
+  if (editMetaGenres) editMetaGenres.value = book.genres || "";
+  if (editMetaDescription) editMetaDescription.value = book.description || "";
   if (editMetaBackdrop) editMetaBackdrop.classList.add("open");
 }
 
@@ -802,6 +919,10 @@ if (editMetaSave) {
     const narrator = (editMetaNarrator ? editMetaNarrator.value : "").trim();
     const series = (editMetaSeries ? editMetaSeries.value : "").trim();
     const series_sequence = (editMetaSequence ? editMetaSequence.value : "").trim();
+    const publish_year = (editMetaPublishYear ? editMetaPublishYear.value : "").trim();
+    const publisher = (editMetaPublisher ? editMetaPublisher.value : "").trim();
+    const genres = (editMetaGenres ? editMetaGenres.value : "").trim();
+    const description = (editMetaDescription ? editMetaDescription.value : "").trim();
 
     if (!title) {
       alert("Audiobook title cannot be empty.");
@@ -821,7 +942,11 @@ if (editMetaSave) {
           author,
           narrator,
           series,
-          series_sequence
+          series_sequence,
+          publish_year,
+          publisher,
+          genres,
+          description
         })
       });
 
@@ -834,6 +959,10 @@ if (editMetaSave) {
       inspectedBook.narrator = narrator;
       inspectedBook.series = series;
       inspectedBook.series_sequence = series_sequence;
+      inspectedBook.publish_year = publish_year;
+      inspectedBook.publisher = publisher;
+      inspectedBook.genres = genres;
+      inspectedBook.description = description;
 
       // Update local books array
       const b = books.find(x => x.id === inspectedBook.id);
@@ -843,6 +972,10 @@ if (editMetaSave) {
         b.narrator = narrator;
         b.series = series;
         b.series_sequence = series_sequence;
+        b.publish_year = publish_year;
+        b.publisher = publisher;
+        b.genres = genres;
+        b.description = description;
       }
 
       // If this book is currently playing, update player bar if title/author changed
@@ -861,18 +994,7 @@ if (editMetaSave) {
       }
 
       // Refresh details modal view
-      detailsTitle.textContent = title;
-      detailsAuthor.textContent = author || "Unknown Author";
-      detailsNarrator.textContent = narrator ? `Narrated by: ${narrator}` : "Narrator: -";
-      if (detailsSeries) {
-        if (series) {
-          detailsSeries.textContent = `Series: ${series}${series_sequence ? ` #${series_sequence}` : ""}`;
-          detailsSeries.style.display = "block";
-        } else {
-          detailsSeries.textContent = "";
-          detailsSeries.style.display = "none";
-        }
-      }
+      openBookDetails(inspectedBook.id);
 
       closeEditMetaModal();
       await populateSeriesDropdown();
@@ -978,7 +1100,9 @@ async function performBookMatchSearch() {
           <div class="match-meta-line">
             <span style="font-weight: 500; color: var(--text-primary);">${escapeHtml(m.author || "Unknown Author")}</span>
             ${m.narrator ? `<span>&bull;</span> <span>Narrated by: ${escapeHtml(m.narrator)}</span>` : ""}
+            ${m.publish_year ? `<span>&bull;</span> <span>${escapeHtml(m.publish_year)}</span>` : ""}
           </div>
+          ${m.genres ? `<div class="match-meta-line" style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(m.genres)}</div>` : ""}
           ${seriesBadge ? `<div style="margin-top: 4px;">${seriesBadge}</div>` : ""}
         </div>
         <button class="match-apply-btn">Apply Match</button>
@@ -1008,6 +1132,10 @@ async function applyBookMatch(candidate) {
     narrator: candidate.narrator || matchingBook.narrator || "",
     series: candidate.series || "",
     series_sequence: candidate.series_sequence || "",
+    publish_year: candidate.publish_year || "",
+    publisher: candidate.publisher || "",
+    genres: candidate.genres || "",
+    description: candidate.description || "",
     cover_url: candidate.cover_url || null
   };
 
@@ -1033,22 +1161,7 @@ async function applyBookMatch(candidate) {
     }
     if (inspectedBook && inspectedBook.id === targetBookId) {
       Object.assign(inspectedBook, updatedBook);
-      // Refresh Book Details modal view
-      detailsTitle.textContent = updatedBook.title;
-      detailsAuthor.textContent = updatedBook.author || "Unknown Author";
-      detailsNarrator.textContent = updatedBook.narrator ? `Narrated by: ${updatedBook.narrator}` : "Narrator: -";
-      if (updatedBook.cover_url) {
-        detailsCover.src = `${updatedBook.cover_url}?t=${Date.now()}`;
-      }
-      if (detailsSeries) {
-        if (updatedBook.series) {
-          detailsSeries.textContent = `Series: ${updatedBook.series}${updatedBook.series_sequence ? ` #${updatedBook.series_sequence}` : ""}`;
-          detailsSeries.style.display = "block";
-        } else {
-          detailsSeries.textContent = "";
-          detailsSeries.style.display = "none";
-        }
-      }
+      openBookDetails(targetBookId);
     }
 
     // Also update Edit Meta modal fields if open
@@ -1057,6 +1170,10 @@ async function applyBookMatch(candidate) {
     if (editMetaNarrator) editMetaNarrator.value = updatedBook.narrator || "";
     if (editMetaSeries) editMetaSeries.value = updatedBook.series || "";
     if (editMetaSequence) editMetaSequence.value = updatedBook.series_sequence || "";
+    if (editMetaPublishYear) editMetaPublishYear.value = updatedBook.publish_year || "";
+    if (editMetaPublisher) editMetaPublisher.value = updatedBook.publisher || "";
+    if (editMetaGenres) editMetaGenres.value = updatedBook.genres || "";
+    if (editMetaDescription) editMetaDescription.value = updatedBook.description || "";
 
     closeMatchModal();
     await populateSeriesDropdown();

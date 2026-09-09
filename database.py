@@ -53,11 +53,14 @@ def init_db():
         uploaded_by TEXT DEFAULT NULL,
         series TEXT DEFAULT NULL,
         series_sequence TEXT DEFAULT NULL,
+        publish_year TEXT DEFAULT NULL,
+        publisher TEXT DEFAULT NULL,
+        genres TEXT DEFAULT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
     
-    # Check if books table has chapters_customized, uploaded_by, series, series_sequence columns (migration check)
+    # Check if books table has chapters_customized, uploaded_by, series, series_sequence, publish_year, publisher, genres columns (migration check)
     cursor.execute("PRAGMA table_info(books)")
     books_cols = [r["name"] for r in cursor.fetchall()]
     if "chapters_customized" not in books_cols:
@@ -78,6 +81,21 @@ def init_db():
     if "series_sequence" not in books_cols:
         try:
             cursor.execute("ALTER TABLE books ADD COLUMN series_sequence TEXT DEFAULT NULL")
+        except Exception:
+            pass
+    if "publish_year" not in books_cols:
+        try:
+            cursor.execute("ALTER TABLE books ADD COLUMN publish_year TEXT DEFAULT NULL")
+        except Exception:
+            pass
+    if "publisher" not in books_cols:
+        try:
+            cursor.execute("ALTER TABLE books ADD COLUMN publisher TEXT DEFAULT NULL")
+        except Exception:
+            pass
+    if "genres" not in books_cols:
+        try:
+            cursor.execute("ALTER TABLE books ADD COLUMN genres TEXT DEFAULT NULL")
         except Exception:
             pass
     
@@ -319,13 +337,13 @@ def upsert_book(book_data: Dict[str, Any]):
         series = str(series).strip()
     
     cursor.execute("""
-    INSERT INTO books (id, title, author, narrator, description, duration, file_path, file_size, cover_path, chapters, chapters_customized, uploaded_by, series, series_sequence, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, CURRENT_TIMESTAMP)
+    INSERT INTO books (id, title, author, narrator, description, duration, file_path, file_size, cover_path, chapters, chapters_customized, uploaded_by, series, series_sequence, publish_year, publisher, genres, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         author = excluded.author,
         narrator = excluded.narrator,
-        description = excluded.description,
+        description = COALESCE(NULLIF(excluded.description, ''), books.description),
         duration = excluded.duration,
         file_path = excluded.file_path,
         file_size = excluded.file_size,
@@ -337,6 +355,9 @@ def upsert_book(book_data: Dict[str, Any]):
         uploaded_by = COALESCE(books.uploaded_by, excluded.uploaded_by),
         series = COALESCE(excluded.series, books.series),
         series_sequence = COALESCE(excluded.series_sequence, books.series_sequence),
+        publish_year = COALESCE(excluded.publish_year, books.publish_year),
+        publisher = COALESCE(excluded.publisher, books.publisher),
+        genres = COALESCE(excluded.genres, books.genres),
         updated_at = CURRENT_TIMESTAMP
     """, (
         book_data["id"],
@@ -351,7 +372,10 @@ def upsert_book(book_data: Dict[str, Any]):
         chapters_json,
         uploaded_by,
         series,
-        series_sequence
+        series_sequence,
+        book_data.get("publish_year"),
+        book_data.get("publisher"),
+        book_data.get("genres")
     ))
     conn.commit()
     conn.close()
@@ -367,7 +391,7 @@ def get_all_books(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
             # Admin can see all audiobooks
             cursor.execute("""
             SELECT 
-                b.id, b.title, b.author, b.narrator, b.duration, b.cover_path, b.uploaded_by, b.series, b.series_sequence, b.updated_at,
+                b.id, b.title, b.author, b.narrator, b.duration, b.file_size, b.cover_path, b.uploaded_by, b.series, b.series_sequence, b.publish_year, b.publisher, b.genres, b.description, b.updated_at,
                 p.position, p.playback_rate, p.completed, p.last_played_at
             FROM books b
             LEFT JOIN progress p ON (b.id = p.book_id AND p.user_id = ?)
@@ -377,7 +401,7 @@ def get_all_books(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
             # Shared library books + user's own uploads
             cursor.execute("""
             SELECT 
-                b.id, b.title, b.author, b.narrator, b.duration, b.cover_path, b.uploaded_by, b.series, b.series_sequence, b.updated_at,
+                b.id, b.title, b.author, b.narrator, b.duration, b.file_size, b.cover_path, b.uploaded_by, b.series, b.series_sequence, b.publish_year, b.publisher, b.genres, b.description, b.updated_at,
                 p.position, p.playback_rate, p.completed, p.last_played_at
             FROM books b
             LEFT JOIN progress p ON (b.id = p.book_id AND p.user_id = ?)
@@ -388,7 +412,7 @@ def get_all_books(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
             # Personal uploads only
             cursor.execute("""
             SELECT 
-                b.id, b.title, b.author, b.narrator, b.duration, b.cover_path, b.uploaded_by, b.series, b.series_sequence, b.updated_at,
+                b.id, b.title, b.author, b.narrator, b.duration, b.file_size, b.cover_path, b.uploaded_by, b.series, b.series_sequence, b.publish_year, b.publisher, b.genres, b.description, b.updated_at,
                 p.position, p.playback_rate, p.completed, p.last_played_at
             FROM books b
             LEFT JOIN progress p ON (b.id = p.book_id AND p.user_id = ?)
@@ -398,7 +422,7 @@ def get_all_books(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     else:
         cursor.execute("""
         SELECT 
-            b.id, b.title, b.author, b.narrator, b.duration, b.cover_path, b.uploaded_by, b.series, b.series_sequence, b.updated_at,
+            b.id, b.title, b.author, b.narrator, b.duration, b.file_size, b.cover_path, b.uploaded_by, b.series, b.series_sequence, b.publish_year, b.publisher, b.genres, b.description, b.updated_at,
             0.0 as position, 1.0 as playback_rate, 0 as completed, NULL as last_played_at
         FROM books b
         WHERE b.uploaded_by IS NULL
@@ -414,9 +438,14 @@ def get_all_books(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
             "author": row["author"],
             "narrator": row["narrator"],
             "duration": row["duration"],
+            "file_size": row["file_size"],
             "uploaded_by": row["uploaded_by"],
             "series": row["series"],
             "series_sequence": row["series_sequence"],
+            "publish_year": row["publish_year"],
+            "publisher": row["publisher"],
+            "genres": row["genres"],
+            "description": row["description"],
             "cover_url": f"/api/books/{row['id']}/cover" if row["cover_path"] else None,
             "progress": {
                 "position": row["position"] or 0.0,
@@ -478,6 +507,9 @@ def get_book_by_id(book_id: str, user_id: Optional[str] = None) -> Optional[Dict
         "uploaded_by": row["uploaded_by"],
         "series": row["series"],
         "series_sequence": row["series_sequence"],
+        "publish_year": row["publish_year"],
+        "publisher": row["publisher"],
+        "genres": row["genres"],
         "cover_url": f"/api/books/{row['id']}/cover" if row["cover_path"] else None,
         "chapters": chapters,
         "progress": {
@@ -635,8 +667,19 @@ def get_user_history_and_stats(user_id: str) -> Dict[str, Any]:
         "history": history_items
     }
 
-def update_book_metadata(book_id: str, title: Optional[str] = None, author: Optional[str] = None, narrator: Optional[str] = None, series: Optional[str] = None, series_sequence: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Update title, author, narrator, series, and series sequence for a book."""
+def update_book_metadata(
+    book_id: str,
+    title: Optional[str] = None,
+    author: Optional[str] = None,
+    narrator: Optional[str] = None,
+    series: Optional[str] = None,
+    series_sequence: Optional[str] = None,
+    publish_year: Optional[str] = None,
+    publisher: Optional[str] = None,
+    genres: Optional[str] = None,
+    description: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Update title, author, narrator, series, sequence, publish year, publisher, genres, and synopsis."""
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -659,6 +702,22 @@ def update_book_metadata(book_id: str, title: Optional[str] = None, author: Opti
         fields.append("series_sequence = ?")
         seq = series_sequence.strip()
         values.append(seq if seq else None)
+    if publish_year is not None:
+        fields.append("publish_year = ?")
+        py = publish_year.strip()
+        values.append(py if py else None)
+    if publisher is not None:
+        fields.append("publisher = ?")
+        pub = publisher.strip()
+        values.append(pub if pub else None)
+    if genres is not None:
+        fields.append("genres = ?")
+        g = genres.strip()
+        values.append(g if g else None)
+    if description is not None:
+        fields.append("description = ?")
+        desc = description.strip()
+        values.append(desc if desc else None)
         
     if fields:
         fields.append("updated_at = CURRENT_TIMESTAMP")

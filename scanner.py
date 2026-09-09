@@ -293,6 +293,9 @@ def scan_file(file_path: Path, uploaded_by: Optional[str] = None, force: bool = 
     author = "Unknown Author"
     narrator = ""
     description = ""
+    publish_year = None
+    publisher = None
+    genres = None
     duration = 0.0
     cover_path = None
     chapters = []
@@ -334,11 +337,40 @@ def scan_file(file_path: Path, uploaded_by: Optional[str] = None, force: bool = 
             elif "\xa9wrt" in tags and tags["\xa9wrt"]:
                 narrator = str(tags["\xa9wrt"][0])
                 
-            # Description
-            if "desc" in tags and tags["desc"]:
+            # Description (check desc, ldes, ©des)
+            if "ldes" in tags and tags["ldes"]:
+                ldes_val = tags["ldes"][0]
+                description = ldes_val.decode("utf-8", errors="replace") if isinstance(ldes_val, bytes) else str(ldes_val)
+            elif "desc" in tags and tags["desc"]:
                 description = str(tags["desc"][0])
             elif "\xa9des" in tags and tags["\xa9des"]:
                 description = str(tags["\xa9des"][0])
+
+            # Publish Year (©day)
+            if "\xa9day" in tags and tags["\xa9day"]:
+                raw_day = str(tags["\xa9day"][0]).strip()
+                if len(raw_day) >= 4 and raw_day[:4].isdigit():
+                    publish_year = raw_day[:4]
+                else:
+                    publish_year = raw_day
+
+            # Publisher (cprt, ©pub, or iTunes custom tag)
+            if "----:com.apple.iTunes:PUBLISHER" in tags:
+                p_val = tags["----:com.apple.iTunes:PUBLISHER"][0]
+                publisher = (p_val.decode("utf-8", errors="replace") if isinstance(p_val, bytes) else str(p_val)).strip()
+            elif "----:com.apple.iTunes:publisher" in tags:
+                p_val = tags["----:com.apple.iTunes:publisher"][0]
+                publisher = (p_val.decode("utf-8", errors="replace") if isinstance(p_val, bytes) else str(p_val)).strip()
+            elif "cprt" in tags and tags["cprt"]:
+                publisher = str(tags["cprt"][0]).strip()
+            elif "\xa9pub" in tags and tags["\xa9pub"]:
+                publisher = str(tags["\xa9pub"][0]).strip()
+
+            # Genres (©gen, gnre)
+            if "\xa9gen" in tags and tags["\xa9gen"]:
+                genres = str(tags["\xa9gen"][0]).strip()
+            elif "gnre" in tags and tags["gnre"]:
+                genres = str(tags["gnre"][0]).strip()
 
             # Series Name (Movement name or iTunes SERIES tag)
             if not series:
@@ -409,7 +441,10 @@ def scan_file(file_path: Path, uploaded_by: Optional[str] = None, force: bool = 
         "chapters": chapters,
         "uploaded_by": uploaded_by,
         "series": series,
-        "series_sequence": series_sequence
+        "series_sequence": series_sequence,
+        "publish_year": publish_year,
+        "publisher": publisher,
+        "genres": genres
     }
     
     upsert_book(book_data)

@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="apple-touch-icon" sizes="512x512" href="/static/icon-512.png">
   <link rel="manifest" href="/static/manifest.json">
-  <link rel="stylesheet" href="/static/style.css?v=2.8">
+  <link rel="stylesheet" href="/static/style.css?v=2.9">
 </head>
 <body>
 
@@ -373,7 +373,7 @@
 
   <!-- DECOUPLED BOOK DETAILS MODAL (Inspect & Edit Without Interrupting Playback) -->
   <div id="details-backdrop" class="modal-backdrop">
-    <div class="modal details-modal">
+    <div class="modal details-modal" style="max-width: 820px; width: 95%;">
       <div class="modal-header">
         <div>
           <h3 id="details-title" class="modal-title">Book Details</h3>
@@ -382,17 +382,60 @@
         <button id="details-close" class="drawer-close">&times;</button>
       </div>
 
-      <div class="modal-body" style="padding: 20px;">
+      <div class="modal-body" style="padding: 22px; gap: 20px;">
         <div class="details-top-row">
-          <img id="details-cover" class="details-cover-img" src="/api/books/cover" alt="Cover">
+          <div class="details-cover-container">
+            <img id="details-cover" class="details-cover-img" src="/api/books/cover" alt="Cover">
+          </div>
           <div class="details-meta-col">
-            <div id="details-narrator" class="details-meta-item">Narrated by: -</div>
-            <div id="details-series" class="details-meta-item" style="display: none; color: var(--accent); font-weight: 600;">Series: -</div>
-            <div id="details-duration" class="details-meta-item">Duration: 0:00:00</div>
-            <div id="details-progress-text" class="details-meta-item" style="color: var(--accent); font-weight: 600;">Your Progress: 0%</div>
+            <div id="details-series-badge" class="details-series-badge" style="display: none;">
+              <span id="details-series-text"></span>
+            </div>
+            <h2 id="details-heading-title" class="details-heading-title">Title</h2>
+            <div id="details-by-author" class="details-by-author">by <span id="details-author-text">Author</span></div>
+
+            <!-- 2-column rich metadata grid -->
+            <div class="details-meta-grid">
+              <div class="details-meta-cell" id="cell-narrator">
+                <div class="details-meta-label">NARRATORS</div>
+                <div id="details-val-narrator" class="details-meta-value">-</div>
+              </div>
+              <div class="details-meta-cell" id="cell-year">
+                <div class="details-meta-label">PUBLISH YEAR</div>
+                <div id="details-val-year" class="details-meta-value">-</div>
+              </div>
+              <div class="details-meta-cell" id="cell-publisher">
+                <div class="details-meta-label">PUBLISHER</div>
+                <div id="details-val-publisher" class="details-meta-value">-</div>
+              </div>
+              <div class="details-meta-cell" id="cell-genres">
+                <div class="details-meta-label">GENRES</div>
+                <div id="details-val-genres" class="details-meta-value">-</div>
+              </div>
+              <div class="details-meta-cell" id="cell-duration">
+                <div class="details-meta-label">DURATION</div>
+                <div id="details-val-duration" class="details-meta-value">-</div>
+              </div>
+              <div class="details-meta-cell" id="cell-size">
+                <div class="details-meta-label">SIZE</div>
+                <div id="details-val-size" class="details-meta-value">-</div>
+              </div>
+            </div>
+
+            <!-- Listening Progress Card -->
+            <div id="details-progress-card" class="details-progress-card">
+              <div class="details-progress-header">
+                <span class="details-progress-title">Your Progress</span>
+                <span id="details-progress-pct" class="details-progress-pct">0%</span>
+              </div>
+              <div class="details-progress-bar-track">
+                <div id="details-progress-bar-fill" class="details-progress-bar-fill" style="width: 0%;"></div>
+              </div>
+              <div id="details-progress-time-left" class="details-progress-time-left">0 min remaining</div>
+            </div>
             
             <!-- Action Buttons -->
-            <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
+            <div class="details-actions">
               <button id="btn-details-play" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                 <span id="btn-details-play-text">Play Audiobook</span>
@@ -407,7 +450,7 @@
               </button>
               <button id="btn-details-reset" class="btn-secondary" style="display: none; align-items: center; gap: 6px; color: #f59e0b;" title="Reset progress back to 0:00">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-                <span>Reset Progress</span>
+                <span>Reset</span>
               </button>
               <button id="btn-details-delete" class="btn-secondary" style="display: none; align-items: center; gap: 6px; border-color: rgba(239, 68, 68, 0.4); color: #f87171;" title="Delete Audiobook">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
@@ -417,9 +460,18 @@
           </div>
         </div>
 
-        <div style="margin-top: 20px;">
-          <h4 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--text-primary); display: flex; justify-content: space-between;">
+        <!-- Description / Synopsis Section -->
+        <div id="details-desc-section" class="details-desc-section" style="display: none;">
+          <h4 class="details-section-heading">Description</h4>
+          <div id="details-description" class="details-description collapsed"></div>
+          <button id="btn-desc-toggle" class="btn-text-toggle" style="display: none;">Read more</button>
+        </div>
+
+        <!-- Chapters Section -->
+        <div style="margin-top: 10px;">
+          <h4 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--text-primary); display: flex; justify-content: space-between; align-items: center;">
             <span>Chapters (<span id="details-chapter-count">0</span>)</span>
+            <button id="btn-toggle-chapters-collapse" class="btn-text-toggle" style="font-size: 0.8rem;">Collapse</button>
           </h4>
           <ul id="details-chapter-list" class="chapter-list" style="max-height: 240px; border: 1px solid var(--border); border-radius: 8px;">
             <!-- Chapters rendered here -->
@@ -431,11 +483,11 @@
 
   <!-- EDIT BOOK METADATA MODAL -->
   <div id="edit-meta-backdrop" class="modal-backdrop">
-    <div class="modal" style="max-width: 480px;">
+    <div class="modal" style="max-width: 520px;">
       <div class="modal-header">
         <div>
           <h3 class="modal-title">Edit Audiobook Info</h3>
-          <p class="modal-subtitle">Update series, author, or title</p>
+          <p class="modal-subtitle">Update series, author, synopsis or metadata</p>
         </div>
         <button id="edit-meta-close" class="drawer-close">&times;</button>
       </div>
@@ -467,6 +519,24 @@
             <label class="form-label">Book / Part #</label>
             <input type="text" id="edit-meta-sequence" class="form-input" placeholder="e.g. 1">
           </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label">Publish Year</label>
+            <input type="text" id="edit-meta-publish-year" class="form-input" placeholder="e.g. 2021">
+          </div>
+          <div class="form-group" style="flex: 2;">
+            <label class="form-label">Publisher</label>
+            <input type="text" id="edit-meta-publisher" class="form-input" placeholder="e.g. Soundbooth Theater">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Genres</label>
+          <input type="text" id="edit-meta-genres" class="form-input" placeholder="e.g. Fantasy, Dark Humor, Action & Adventure">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description / Synopsis</label>
+          <textarea id="edit-meta-description" class="form-input" rows="4" style="resize: vertical; font-family: inherit; font-size: 0.9rem;" placeholder="Book summary..."></textarea>
         </div>
       </div>
       <div class="modal-footer">
@@ -784,6 +854,6 @@
 
   <datalist id="existing-series-list"></datalist>
 
-  <script src="/static/app.js?v=2.8"></script>
+  <script src="/static/app.js?v=2.9"></script>
 </body>
 </html>

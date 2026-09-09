@@ -1221,35 +1221,223 @@ main {
 
 /* Book Details Modal */
 .details-modal {
-  max-width: 650px;
+  max-width: 820px;
 }
 
 .details-top-row {
   display: flex;
-  gap: 20px;
+  gap: 24px;
   align-items: flex-start;
 }
 
-.details-cover-img {
-  width: 140px;
-  height: 140px;
-  border-radius: 10px;
-  object-fit: cover;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.5);
-  border: 1px solid var(--border);
+.details-cover-container {
+  width: 180px;
+  height: 180px;
   flex-shrink: 0;
+}
+
+.details-cover-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .details-meta-col {
   display: flex;
   flex-direction: column;
-  gap: 6px;
   flex: 1;
+  min-width: 0;
 }
 
-.details-meta-item {
+.details-series-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.details-heading-title {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.25;
+  margin: 0 0 4px 0;
+  word-break: break-word;
+}
+
+.details-by-author {
+  font-size: 0.92rem;
   color: var(--text-secondary);
+  margin-bottom: 14px;
+}
+
+.details-by-author span {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* 2-Column Metadata Grid */
+.details-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 24px;
+  margin-bottom: 14px;
+}
+
+.details-meta-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.details-meta-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.details-meta-value {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Listening Progress Card */
+.details-progress-card {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.details-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.details-progress-title {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.details-progress-pct {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.details-progress-bar-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.details-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+.details-progress-time-left {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.details-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Description / Synopsis */
+.details-desc-section {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.details-section-heading {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.details-description {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-line;
+}
+
+.details-description.collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.btn-text-toggle {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  margin-top: 6px;
+  transition: color 0.15s ease;
+}
+
+.btn-text-toggle:hover {
+  text-decoration: underline;
+  color: #7dd3fc;
+}
+
+@media (max-width: 640px) {
+  .details-top-row {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 16px;
+  }
+
+  .details-cover-container {
+    width: 150px;
+    height: 150px;
+  }
+
+  .details-meta-grid {
+    grid-template-columns: 1fr 1fr;
+    text-align: left;
+  }
+
+  .details-actions {
+    justify-content: center;
+  }
 }
 
 /* Forms */
