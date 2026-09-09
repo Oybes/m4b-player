@@ -99,6 +99,18 @@ const editMetaAuthor = document.getElementById("edit-meta-author");
 const editMetaNarrator = document.getElementById("edit-meta-narrator");
 const editMetaSeries = document.getElementById("edit-meta-series");
 const editMetaSequence = document.getElementById("edit-meta-sequence");
+const btnEditMetaMatch = document.getElementById("btn-edit-meta-match");
+
+// Match Book Modal (Goodreads, Audible, Google Books)
+const matchModalBackdrop = document.getElementById("match-modal-backdrop");
+const matchModalClose = document.getElementById("match-modal-close");
+const matchSearchInput = document.getElementById("match-search-input");
+const btnMatchSearch = document.getElementById("btn-match-search");
+const matchResultsList = document.getElementById("match-results-list");
+const matchLoading = document.getElementById("match-loading");
+const matchEmpty = document.getElementById("match-empty");
+const btnMatchSkip = document.getElementById("btn-match-skip");
+let matchingBook = null;
 
 // Navigation & Views
 const navTabLibrary = document.getElementById("nav-tab-library");
@@ -873,6 +885,210 @@ if (editMetaSave) {
     } finally {
       editMetaSave.disabled = false;
       editMetaSave.textContent = originalText;
+    }
+  });
+}
+
+// -------------------------------------------------------------
+// BOOK MATCH-UP MODAL (Goodreads, Audible, Google Books)
+// -------------------------------------------------------------
+let matchAbortController = null;
+
+function openMatchModal(book) {
+  if (!book) return;
+  matchingBook = book;
+  
+  if (matchSearchInput) {
+    const rawQ = book.title || "";
+    // Clean common file artifacts like .m4b, underscores, or book numbers
+    const cleanQ = rawQ.replace(/\.[a-z0-9]+$/i, "").replace(/[_-]+/g, " ").trim();
+    matchSearchInput.value = book.author && book.author !== "Unknown Author" ? `${cleanQ} ${book.author}` : cleanQ;
+  }
+
+  if (matchResultsList) matchResultsList.innerHTML = "";
+  if (matchEmpty) matchEmpty.style.display = "none";
+  if (matchModalBackdrop) matchModalBackdrop.classList.add("open");
+
+  performBookMatchSearch();
+}
+
+function closeMatchModal() {
+  if (matchAbortController) {
+    matchAbortController.abort();
+    matchAbortController = null;
+  }
+  matchingBook = null;
+  if (matchModalBackdrop) matchModalBackdrop.classList.remove("open");
+}
+
+async function performBookMatchSearch() {
+  if (!matchSearchInput) return;
+  const q = matchSearchInput.value.trim();
+  if (!q) return;
+
+  if (matchAbortController) {
+    matchAbortController.abort();
+  }
+  matchAbortController = new AbortController();
+
+  if (matchLoading) matchLoading.style.display = "block";
+  if (matchEmpty) matchEmpty.style.display = "none";
+  if (matchResultsList) matchResultsList.innerHTML = "";
+
+  try {
+    const res = await fetch(`/api/lookup/match?query=${encodeURIComponent(q)}`, {
+      signal: matchAbortController.signal
+    });
+    if (!res.ok) throw new Error("Search failed");
+    const data = await res.json();
+    const matches = data.matches || [];
+
+    if (matchLoading) matchLoading.style.display = "none";
+
+    if (matches.length === 0) {
+      if (matchEmpty) matchEmpty.style.display = "block";
+      return;
+    }
+
+    matches.forEach(m => {
+      const item = document.createElement("div");
+      item.className = "match-item";
+
+      const sourceClass = (m.source || "").toLowerCase().replace(/[^a-z]/g, "");
+      const seriesBadge = m.series ? `
+        <span class="match-series-pill">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          <span>${escapeHtml(m.series)}${m.series_sequence ? ` #${escapeHtml(m.series_sequence)}` : ""}</span>
+        </span>
+      ` : "";
+
+      const coverHtml = m.cover_url ? `
+        <img class="match-thumb" src="${m.cover_url}" alt="${escapeHtml(m.title)}" loading="lazy" onerror="this.style.display='none'">
+      ` : `
+        <div class="match-thumb-placeholder">📖</div>
+      `;
+
+      item.innerHTML = `
+        ${coverHtml}
+        <div class="match-info">
+          <div class="match-title-row">
+            <div class="match-title" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</div>
+            <span class="match-source-badge ${sourceClass}">${escapeHtml(m.source || "Web")}</span>
+          </div>
+          <div class="match-meta-line">
+            <span style="font-weight: 500; color: var(--text-primary);">${escapeHtml(m.author || "Unknown Author")}</span>
+            ${m.narrator ? `<span>&bull;</span> <span>Narrated by: ${escapeHtml(m.narrator)}</span>` : ""}
+          </div>
+          ${seriesBadge ? `<div style="margin-top: 4px;">${seriesBadge}</div>` : ""}
+        </div>
+        <button class="match-apply-btn">Apply Match</button>
+      `;
+
+      item.addEventListener("click", () => applyBookMatch(m));
+      matchResultsList.appendChild(item);
+    });
+
+  } catch (err) {
+    if (matchAbortController && matchAbortController.signal.aborted) return;
+    if (matchLoading) matchLoading.style.display = "none";
+    if (matchEmpty) {
+      matchEmpty.textContent = "Error searching matches: " + err.message;
+      matchEmpty.style.display = "block";
+    }
+  }
+}
+
+async function applyBookMatch(candidate) {
+  if (!matchingBook) return;
+
+  const targetBookId = matchingBook.id;
+  const payload = {
+    title: candidate.title || matchingBook.title,
+    author: candidate.author || matchingBook.author,
+    narrator: candidate.narrator || matchingBook.narrator || "",
+    series: candidate.series || "",
+    series_sequence: candidate.series_sequence || "",
+    cover_url: candidate.cover_url || null
+  };
+
+  try {
+    const res = await fetch(`/api/books/${targetBookId}/metadata`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to apply match");
+    }
+
+    const data = await res.json();
+    const updatedBook = data.book;
+
+    // Update local cache
+    const b = books.find(x => x.id === targetBookId);
+    if (b) {
+      Object.assign(b, updatedBook);
+    }
+    if (inspectedBook && inspectedBook.id === targetBookId) {
+      Object.assign(inspectedBook, updatedBook);
+      // Refresh Book Details modal view
+      detailsTitle.textContent = updatedBook.title;
+      detailsAuthor.textContent = updatedBook.author || "Unknown Author";
+      detailsNarrator.textContent = updatedBook.narrator ? `Narrated by: ${updatedBook.narrator}` : "Narrator: -";
+      if (updatedBook.cover_url) {
+        detailsCover.src = `${updatedBook.cover_url}?t=${Date.now()}`;
+      }
+      if (detailsSeries) {
+        if (updatedBook.series) {
+          detailsSeries.textContent = `Series: ${updatedBook.series}${updatedBook.series_sequence ? ` #${updatedBook.series_sequence}` : ""}`;
+          detailsSeries.style.display = "block";
+        } else {
+          detailsSeries.textContent = "";
+          detailsSeries.style.display = "none";
+        }
+      }
+    }
+
+    // Also update Edit Meta modal fields if open
+    if (editMetaTitle) editMetaTitle.value = updatedBook.title;
+    if (editMetaAuthor) editMetaAuthor.value = updatedBook.author;
+    if (editMetaNarrator) editMetaNarrator.value = updatedBook.narrator || "";
+    if (editMetaSeries) editMetaSeries.value = updatedBook.series || "";
+    if (editMetaSequence) editMetaSequence.value = updatedBook.series_sequence || "";
+
+    closeMatchModal();
+    await populateSeriesDropdown();
+    renderLibrary();
+    if (currentView === "history") {
+      loadHistoryAndStats();
+    }
+  } catch (err) {
+    alert("Error applying match: " + err.message);
+  }
+}
+
+if (btnMatchSearch) btnMatchSearch.addEventListener("click", performBookMatchSearch);
+if (matchSearchInput) {
+  matchSearchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      performBookMatchSearch();
+    }
+  });
+}
+if (btnMatchSkip) btnMatchSkip.addEventListener("click", closeMatchModal);
+if (matchModalClose) matchModalClose.addEventListener("click", closeMatchModal);
+if (matchModalBackdrop) {
+  matchModalBackdrop.addEventListener("click", (e) => {
+    if (e.target === matchModalBackdrop) closeMatchModal();
+  });
+}
+if (btnEditMetaMatch) {
+  btnEditMetaMatch.addEventListener("click", () => {
+    if (inspectedBook) {
+      openMatchModal(inspectedBook);
     }
   });
 }
@@ -2036,8 +2252,12 @@ if (uploadSubmit) {
             uploadPctText.textContent = "100%";
             uploadStatusText.textContent = "Upload complete!";
             closeUploadModal();
-            alert(data.message || "Audiobook uploaded successfully!");
             await loadLibrary();
+            if (data.book) {
+              openMatchModal(data.book);
+            } else {
+              alert(data.message || "Audiobook uploaded successfully!");
+            }
             return;
           }
 

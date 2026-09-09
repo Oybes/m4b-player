@@ -112,6 +112,7 @@ class UpdateMetadataPayload(BaseModel):
     narrator: Optional[str] = None
     series: Optional[str] = None
     series_sequence: Optional[str] = None
+    cover_url: Optional[str] = None
 
 # Setup & Onboarding Endpoints
 @app.get("/api/setup/status")
@@ -538,9 +539,18 @@ def list_series(user: Dict[str, Any] = Depends(require_user)):
     """List all unique series accessible to the user with book counts."""
     return {"series": database.get_all_series(user_id=user["id"])}
 
+@app.get("/api/lookup/match")
+def match_books(query: str, author: str = "", user: Dict[str, Any] = Depends(require_user)):
+    """Search Goodreads, Audible, and Google Books for book metadata and series match-ups."""
+    clean_q = query.strip()
+    if not clean_q:
+        return {"matches": []}
+    matches = lookup.search_book_matches(clean_q, author=author)
+    return {"matches": matches}
+
 @app.put("/api/books/{book_id}/metadata")
 def update_book_metadata(book_id: str, payload: UpdateMetadataPayload, user: Dict[str, Any] = Depends(require_user)):
-    """Update title, author, narrator, series, and series sequence for an audiobook."""
+    """Update title, author, narrator, series, series sequence, and optional cover art for an audiobook."""
     book = database.get_book_by_id(book_id, user_id=user["id"])
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -558,7 +568,15 @@ def update_book_metadata(book_id: str, payload: UpdateMetadataPayload, user: Dic
         series=payload.series,
         series_sequence=payload.series_sequence
     )
-    return {"status": "ok", "book": updated}
+
+    if payload.cover_url:
+        try:
+            lookup.download_remote_cover(payload.cover_url, book_id)
+        except Exception as e:
+            print(f"[Metadata] Warning: Failed downloading cover for {book_id}: {e}")
+
+    full_updated = database.get_book_by_id(book_id, user_id=user["id"])
+    return {"status": "ok", "book": full_updated or updated}
 
 @app.post("/api/books/upload/chunk")
 async def upload_audiobook_chunk(

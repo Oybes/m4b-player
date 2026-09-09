@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="apple-touch-icon" sizes="512x512" href="/static/icon-512.png">
   <link rel="manifest" href="/static/manifest.json">
-  <link rel="stylesheet" href="/static/style.css?v=2.7">
+  <link rel="stylesheet" href="/static/style.css?v=2.8">
 </head>
 <body>
 
@@ -440,6 +440,12 @@
         <button id="edit-meta-close" class="drawer-close">&times;</button>
       </div>
       <div class="modal-body" style="gap: 14px;">
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 2px;">
+          <button id="btn-edit-meta-match" class="btn-secondary" type="button" style="font-size: 0.8rem; padding: 5px 12px; display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <span>Match Online (Goodreads / Audible)</span>
+          </button>
+        </div>
         <div class="form-group">
           <label class="form-label">Book Title</label>
           <input type="text" id="edit-meta-title" class="form-input">
@@ -466,6 +472,42 @@
       <div class="modal-footer">
         <button id="edit-meta-cancel" class="btn-secondary">Cancel</button>
         <button id="edit-meta-save" class="btn-primary">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MATCH BOOK MODAL (Goodreads, Audible, Google Books) -->
+  <div id="match-modal-backdrop" class="modal-backdrop">
+    <div class="modal" style="max-width: 580px; max-height: 88vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Match Book Details</h3>
+          <p class="modal-subtitle">Auto-fill book info and series details from Goodreads, Audible & Google</p>
+        </div>
+        <button id="match-modal-close" class="drawer-close">&times;</button>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px; overflow-y: hidden; flex: 1;">
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="match-search-input" class="form-input" placeholder="Search book title or author..." style="flex: 1;">
+          <button id="btn-match-search" class="btn-primary" style="padding: 0 16px; white-space: nowrap;">Search</button>
+        </div>
+
+        <div id="match-loading" style="display: none; text-align: center; padding: 28px 16px; color: var(--text-secondary);">
+          <div style="font-size: 1.1rem; margin-bottom: 8px;">🔍</div>
+          <span>Searching Goodreads, Audible & Google Books...</span>
+        </div>
+
+        <div id="match-empty" style="display: none; text-align: center; padding: 24px; color: var(--text-secondary);">
+          <p>No matches found. Try modifying your search keywords above.</p>
+        </div>
+
+        <div id="match-results-list" class="match-results-list" style="overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; max-height: 420px; padding-right: 4px;">
+          <!-- Candidates rendered dynamically -->
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content: space-between; align-items: center;">
+        <button id="btn-match-skip" class="btn-secondary">Keep As-Is / Skip</button>
+        <span style="font-size: 0.78rem; color: var(--text-secondary);">Click any result to apply match</span>
       </div>
     </div>
   </div>
@@ -742,6 +784,6 @@
 
   <datalist id="existing-series-list"></datalist>
 
-  <script src="/static/app.js?v=2.7"></script>
+  <script src="/static/app.js?v=2.8"></script>
 </body>
 </html>
