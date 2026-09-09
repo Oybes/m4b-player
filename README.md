@@ -1,6 +1,6 @@
 # 🎧 Lightweight Self-Hosted M4B Audiobook Player
 
-A modern, fast, self-hosted web player and server for `.m4b` and `.m4a` audiobooks with **first-run onboarding setup wizard**, **multi-user permissions**, **Whisper AI chapter enrichment**, and **mobile lockscreen controls**.
+A modern, fast, self-hosted web player and server for `.m4b` and `.m4a` audiobooks with **first-run onboarding setup wizard**, **multi-user permissions**, **rich metadata & online match-up** (Audible, Goodreads, Google Books), **series management**, **listening history & statistics**, **Whisper AI chapter enrichment**, and **mobile lockscreen controls**.
 
 Designed to run locally or self-hosted in Docker on Linux, VPS, and NAS systems (**TrueNAS SCALE**, Unraid, Synology).
 
@@ -45,9 +45,57 @@ Enrich files missing proper chapter names (e.g. *"Chapter 1, Chapter 2"*):
 
 ---
 
-### 📤 Chunked Audiobook Uploads
-- Direct in-browser upload modal for `.m4b`, `.m4a`, and `.mp4` audiobooks.
-- Streams files in 1MB chunks to support multi-gigabyte audiobooks with low RAM consumption and live percentage progress indicators.
+### 📚 Rich Audiobook Information & Audiobookshelf-Style View
+- **Comprehensive Metadata Display**: Inspect any audiobook without interrupting active playback:
+  - **Narrators**, **Publish Year**, **Publisher**, and **Genres**.
+  - **Formatted Duration** (e.g., `13 hr 53 min`) and **File Size** (e.g., `386.48 MB`).
+  - **Listening Progress Card**: Shows percentage, visual progress bar, and exact remaining time (`X hr Y min remaining`).
+- **Collapsible Synopsis**: Multi-line description with `Read more` / `Read less` toggle.
+- **Collapsible Chapter Browser**: Jump to any chapter directly from the book details.
+- **Audiobook Management**:
+  - **Per-User Progress Reset**: Reset your listening progress back to 0:00 without affecting other family members.
+  - **Audiobook Deletion**: Remove audiobooks directly from the UI (available to admins or the original uploader).
+
+---
+
+### 🔍 Online Book Match-Up (Audible, Goodreads & Google Books)
+- **1-Click Metadata Auto-Fill**: Search across **Goodreads, Audible, and Google Books** concurrently.
+- Automatically fetch and apply:
+  - Clean Title & Author
+  - Narrator(s)
+  - Series Name & Book / Part Sequence
+  - Publish Year & Publisher
+  - Genre Categories & Full Book Synopsis
+  - High-resolution Cover Art
+- **Manual Metadata Editor**: Easily tweak any field manually via the built-in *Edit Info* modal.
+
+---
+
+### 📊 Per-User History & Listening Statistics
+- **Personal Statistics Dashboard**:
+  - **Total Listening Time** tracked down to the minute.
+  - **Books Completed** counter.
+  - **In-Progress Audiobooks** (tracks audiobooks with $\ge 2$ minutes of listening time).
+  - **Top Author** dynamically calculated based on your listening habits.
+- **Chronological Listening Timeline**: Review your recent listening history with timestamps, completion percentages, and instant resume buttons.
+
+---
+
+### 🔍 Search, Filter & Series Management
+- **Instant Search**: Real-time searching across book titles, authors, series names, and narrators.
+- **Smart Filter Chips**:
+  - `All`, `In Progress` ($\ge 2$ min), `Completed`, `Unstarted`, and `My Uploads`.
+- **Series Filtering & Sorting**:
+  - Filter your library by specific book series.
+  - Sort by **Recent Activity**, **Series Order** (groups series together in sequence #1, #2, #3...), **Title (A-Z, Z-A)**, **Author**, or **Duration (Longest, Shortest)**.
+  - Series pills on book cards let you filter by series with a single click.
+
+---
+
+### 📤 Resilient Chunked Uploads
+- **Proxy-Proof Chunking**: Direct in-browser upload modal for `.m4b`, `.m4a`, and `.mp4` audiobooks.
+- Streams files in safe $\le 1\text{MB}$ chunks to effortlessly bypass Nginx, Cloudflare, TrueNAS, or reverse proxy body size limits (`client_max_body_size`).
+- Supports multi-gigabyte files with live percentage progress indicators and optional series/sequence tagging on upload.
 
 ---
 
