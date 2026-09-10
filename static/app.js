@@ -8,6 +8,9 @@ let sleepTimeout = null;
 let sleepInterval = null;
 let sleepEndsAt = null;
 let lastSyncTime = 0;
+let lastTrackedPosition = null;
+let lastTrackedBookId = null;
+let cachedAdminStats = null;
 
 // DOM Elements
 const audio = document.getElementById("audio-player");
@@ -196,6 +199,19 @@ const loginError = document.getElementById("login-error");
 // Admin Modal
 const adminBackdrop = document.getElementById("admin-backdrop");
 const adminClose = document.getElementById("admin-close");
+const adminTabBtnStats = document.getElementById("admin-tab-btn-stats");
+const adminTabBtnUsers = document.getElementById("admin-tab-btn-users");
+const adminTabBtnSettings = document.getElementById("admin-tab-btn-settings");
+const adminViewStats = document.getElementById("admin-view-stats");
+const adminViewUsers = document.getElementById("admin-view-users");
+const adminViewSettings = document.getElementById("admin-view-settings");
+const adminStatTotalTime = document.getElementById("admin-stat-total-time");
+const adminStatTotalMinutes = document.getElementById("admin-stat-total-minutes");
+const adminStatTotalCompleted = document.getElementById("admin-stat-total-completed");
+const adminStatActiveUsers = document.getElementById("admin-stat-active-users");
+const adminStatTotalUsers = document.getElementById("admin-stat-total-users");
+const adminUsersStatsCount = document.getElementById("admin-users-stats-count");
+const adminStatsTableBody = document.getElementById("admin-stats-table-body");
 const adminNewUser = document.getElementById("admin-new-user");
 const adminNewPass = document.getElementById("admin-new-pass");
 const adminNewRole = document.getElementById("admin-new-role");
@@ -208,6 +224,15 @@ const adminCfgPath = document.getElementById("admin-cfg-path");
 const btnAdminSaveCfg = document.getElementById("btn-admin-save-cfg");
 const btnAdminRebuildDb = document.getElementById("btn-admin-rebuild-db");
 const adminRebuildRescan = document.getElementById("admin-rebuild-rescan");
+
+// Admin User Details Modal
+const adminUserDetailsBackdrop = document.getElementById("admin-user-details-backdrop");
+const adminUserDetailName = document.getElementById("admin-user-detail-name");
+const adminUserDetailSummary = document.getElementById("admin-user-detail-summary");
+const adminUserDetailClose = document.getElementById("admin-user-detail-close");
+const adminUserDetailCloseBtn = document.getElementById("admin-user-detail-close-btn");
+const adminUserDetailBookList = document.getElementById("admin-user-detail-book-list");
+const adminUserDetailEmpty = document.getElementById("admin-user-detail-empty");
 
 
 // Upload Modal
@@ -1493,6 +1518,8 @@ async function startPlayingBook(bookId, startAt = null) {
       if (resumePos > 0 && resumePos < audio.duration) {
         audio.currentTime = resumePos;
       }
+      lastTrackedPosition = resumePos;
+      lastTrackedBookId = book.id;
       updateTimeUI();
       audio.play();
     }, { once: true });
@@ -1537,15 +1564,32 @@ async function syncProgress(force = false) {
   const duration = audio.duration || playingBook.duration || 1;
   const isCompleted = pos >= duration - 10;
 
+  // Calculate actual seconds listened during continuous playback
+  let secondsListened = null;
+  if (!audio.paused && lastTrackedBookId === playingBook.id && lastTrackedPosition !== null) {
+    const delta = pos - lastTrackedPosition;
+    // Count continuous playback forward up to 60s (filters out skips/scrubbing jumps)
+    if (delta > 0 && delta < 60) {
+      secondsListened = delta;
+    }
+  }
+  lastTrackedPosition = pos;
+  lastTrackedBookId = playingBook.id;
+
   try {
+    const payload = {
+      position: pos,
+      playback_rate: audio.playbackRate,
+      completed: isCompleted
+    };
+    if (secondsListened !== null && secondsListened > 0) {
+      payload.seconds_listened = secondsListened;
+    }
+
     await fetch(`/api/books/${playingBook.id}/progress`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        position: pos,
-        playback_rate: audio.playbackRate,
-        completed: isCompleted
-      }),
+      body: JSON.stringify(payload),
       keepalive: true
     });
 
@@ -1607,6 +1651,10 @@ audio.addEventListener("pause", () => {
   pauseIcon.style.display = "none";
   if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
   syncProgress(true);
+});
+
+audio.addEventListener("seeking", () => {
+  lastTrackedPosition = audio.currentTime;
 });
 
 audio.addEventListener("timeupdate", () => {
@@ -1963,10 +2011,34 @@ if (enrichSave) {
 }
 
 // -------------------------------------------------------------
-// ADMIN MANAGEMENT MODAL
+// ADMIN MANAGEMENT & STATS MODAL
 // -------------------------------------------------------------
+function switchAdminTab(tabName) {
+  const tabs = [
+    { name: "stats", btn: adminTabBtnStats, view: adminViewStats },
+    { name: "users", btn: adminTabBtnUsers, view: adminViewUsers },
+    { name: "settings", btn: adminTabBtnSettings, view: adminViewSettings }
+  ];
+  tabs.forEach(t => {
+    if (t.btn && t.view) {
+      if (t.name === tabName) {
+        t.btn.classList.add("active");
+        t.view.style.display = "block";
+      } else {
+        t.btn.classList.remove("active");
+        t.view.style.display = "none";
+      }
+    }
+  });
+}
+
+if (adminTabBtnStats) adminTabBtnStats.addEventListener("click", () => switchAdminTab("stats"));
+if (adminTabBtnUsers) adminTabBtnUsers.addEventListener("click", () => switchAdminTab("users"));
+if (adminTabBtnSettings) adminTabBtnSettings.addEventListener("click", () => switchAdminTab("settings"));
+
 if (btnAdminPanel) {
   btnAdminPanel.addEventListener("click", async () => {
+    switchAdminTab("stats");
     adminBackdrop.classList.add("open");
     await loadAdminData();
   });
@@ -1975,6 +2047,195 @@ if (btnAdminPanel) {
 if (adminClose) adminClose.addEventListener("click", () => adminBackdrop.classList.remove("open"));
 if (adminBackdrop) adminBackdrop.addEventListener("click", (e) => {
   if (e.target === adminBackdrop) adminBackdrop.classList.remove("open");
+});
+
+function formatStatsDuration(seconds) {
+  if (!seconds || seconds <= 0) return "0h 0m";
+  const totalMins = Math.round(seconds / 60);
+  const hrs = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  if (hrs > 0) {
+    return `${hrs}h ${mins}m`;
+  }
+  return `${mins}m`;
+}
+
+function formatRelativeDate(isoStr) {
+  if (!isoStr) return "Never";
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return "Never";
+    const now = new Date();
+    const diffSec = Math.floor((now - d) / 1000);
+    if (diffSec < 60) return "Just now";
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+    if (diffSec < 86400 * 7) return `${Math.floor(diffSec / 86400)}d ago`;
+    return d.toLocaleDateString();
+  } catch (e) {
+    return "Never";
+  }
+}
+
+async function loadAdminStats() {
+  if (!adminStatsTableBody) return;
+  try {
+    const res = await fetch("/api/admin/stats");
+    if (!res.ok) return;
+    const data = await res.json();
+    cachedAdminStats = data;
+
+    if (adminStatTotalTime) adminStatTotalTime.textContent = formatStatsDuration(data.summary?.total_server_seconds || 0);
+    if (adminStatTotalMinutes) adminStatTotalMinutes.textContent = `${(data.summary?.total_server_minutes || 0).toLocaleString()} total minutes`;
+    if (adminStatTotalCompleted) adminStatTotalCompleted.textContent = data.summary?.total_books_completed || 0;
+    if (adminStatActiveUsers) adminStatActiveUsers.textContent = data.summary?.active_users_count || 0;
+    if (adminStatTotalUsers) adminStatTotalUsers.textContent = `${data.summary?.total_users_count || 0} total registered`;
+    if (adminUsersStatsCount) adminUsersStatsCount.textContent = `${data.users?.length || 0} user${data.users?.length === 1 ? '' : 's'}`;
+
+    adminStatsTableBody.innerHTML = "";
+    (data.users || []).forEach(u => {
+      const tr = document.createElement("tr");
+
+      // Current / latest book snippet
+      let bookSnippet = `<span style="color:var(--text-muted); font-size:0.78rem;">None yet</span>`;
+      if (u.latest_book) {
+        const lb = u.latest_book;
+        const thumb = lb.cover_url
+          ? `<img src="${lb.cover_url}" class="admin-book-thumb" alt="Cover">`
+          : `<div class="admin-book-thumb-ph">🎧</div>`;
+        bookSnippet = `
+          <div class="admin-current-book-cell">
+            ${thumb}
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 0.8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary);" title="${escapeHtml(lb.title)}">
+                ${escapeHtml(lb.title)}
+              </div>
+              <div style="font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${escapeHtml(lb.author || "Unknown")}
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px; margin-top: 3px;">
+                <div style="flex: 1; height: 4px; background: var(--bg-hover); border-radius: 2px; overflow: hidden;">
+                  <div style="height: 100%; width: ${Math.min(100, lb.percentage)}%; background: ${lb.completed ? 'var(--accent-green, #22c55e)' : 'var(--accent, #38bdf8)'};"></div>
+                </div>
+                <span style="font-size: 0.68rem; color: var(--text-muted);">${lb.percentage}%</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      const isSelf = currentUser && currentUser.id === u.id;
+      const hoursMins = formatStatsDuration(u.total_listen_seconds);
+
+      tr.innerHTML = `
+        <td>
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <strong style="color: var(--text-primary); font-size: 0.85rem;">${escapeHtml(u.username)}</strong>
+            <span class="role-pill">${u.role}</span>
+            ${isSelf ? `<span style="font-size: 0.7rem; color: var(--text-muted);">(You)</span>` : ""}
+          </div>
+        </td>
+        <td>
+          <span class="admin-time-badge">${hoursMins}</span>
+          <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">
+            ${(u.total_listen_minutes || 0).toLocaleString()} mins
+          </div>
+        </td>
+        <td>
+          <span style="font-weight: 700; color: #22c55e;">${u.completed_count || 0}</span>
+          <span style="font-size: 0.75rem; color: var(--text-muted);"> bks</span>
+        </td>
+        <td>
+          <span style="font-weight: 700; color: var(--accent);">${u.in_progress_count || 0}</span>
+          <span style="font-size: 0.75rem; color: var(--text-muted);"> bks</span>
+        </td>
+        <td>${bookSnippet}</td>
+        <td>
+          <span style="font-size: 0.78rem; color: var(--text-secondary); white-space: nowrap;">${formatRelativeDate(u.last_played_at)}</span>
+        </td>
+        <td style="text-align: right;">
+          <button class="btn-admin-view-history" onclick="openAdminUserDetails('${u.id}')" title="Inspect listening history">
+            View (${u.books_count || 0})
+          </button>
+        </td>
+      `;
+      adminStatsTableBody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error("Failed to load admin listening statistics:", err);
+  }
+}
+
+window.openAdminUserDetails = function(userId) {
+  if (!cachedAdminStats || !cachedAdminStats.users) return;
+  const user = cachedAdminStats.users.find(u => u.id === userId);
+  if (!user) return;
+
+  if (adminUserDetailName) adminUserDetailName.textContent = `Listening History: ${user.username}`;
+  if (adminUserDetailSummary) {
+    const totalTime = formatStatsDuration(user.total_listen_seconds);
+    adminUserDetailSummary.textContent = `${totalTime} total listened (${user.total_listen_minutes} mins) • ${user.completed_count} completed • ${user.books_count} total books touched`;
+  }
+
+  if (adminUserDetailBookList) {
+    adminUserDetailBookList.innerHTML = "";
+    if (!user.books || user.books.length === 0) {
+      if (adminUserDetailEmpty) adminUserDetailEmpty.style.display = "block";
+    } else {
+      if (adminUserDetailEmpty) adminUserDetailEmpty.style.display = "none";
+      user.books.forEach(b => {
+        const item = document.createElement("div");
+        item.className = "history-item";
+        item.style.cssText = "display: flex; gap: 14px; padding: 12px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; align-items: center; margin-bottom: 8px;";
+        
+        const thumb = b.cover_url
+          ? `<img src="${b.cover_url}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" alt="Cover">`
+          : `<div style="width: 48px; height: 48px; border-radius: 6px; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0;">🎧</div>`;
+        
+        const seriesTag = b.series 
+          ? `<span style="font-size: 0.72rem; color: var(--accent); background: rgba(56, 189, 248, 0.1); padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 2px;">${escapeHtml(b.series)}${b.series_sequence ? ` #${b.series_sequence}` : ""}</span>`
+          : "";
+
+        const statusBadge = b.completed
+          ? `<span style="font-size: 0.72rem; color: #22c55e; background: rgba(34, 197, 94, 0.1); padding: 2px 8px; border-radius: 12px; font-weight: 600;">Completed</span>`
+          : (b.position >= 120
+              ? `<span style="font-size: 0.72rem; color: var(--accent); background: rgba(56, 189, 248, 0.1); padding: 2px 8px; border-radius: 12px; font-weight: 600;">In Progress</span>`
+              : `<span style="font-size: 0.72rem; color: var(--text-muted); background: var(--bg-hover); padding: 2px 8px; border-radius: 12px;">Started</span>`);
+
+        item.innerHTML = `
+          ${thumb}
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <h4 style="font-size: 0.88rem; font-weight: 600; margin: 0; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(b.title)}</h4>
+              ${statusBadge}
+            </div>
+            <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">
+              ${seriesTag} ${escapeHtml(b.author || "Unknown Author")}
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+              <div style="flex: 1; height: 5px; background: var(--bg-hover); border-radius: 3px; overflow: hidden;">
+                <div style="height: 100%; width: ${Math.min(100, b.percentage)}%; background: ${b.completed ? '#22c55e' : 'var(--accent)'};"></div>
+              </div>
+              <span style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary);">${b.percentage}%</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">
+              <span>${formatTime(b.position)} / ${formatTime(b.duration)}</span>
+              <span>Last active: ${formatRelativeDate(b.last_played_at)}</span>
+            </div>
+          </div>
+        `;
+        adminUserDetailBookList.appendChild(item);
+      });
+    }
+  }
+
+  if (adminUserDetailsBackdrop) adminUserDetailsBackdrop.classList.add("open");
+};
+
+if (adminUserDetailClose) adminUserDetailClose.addEventListener("click", () => adminUserDetailsBackdrop.classList.remove("open"));
+if (adminUserDetailCloseBtn) adminUserDetailCloseBtn.addEventListener("click", () => adminUserDetailsBackdrop.classList.remove("open"));
+if (adminUserDetailsBackdrop) adminUserDetailsBackdrop.addEventListener("click", (e) => {
+  if (e.target === adminUserDetailsBackdrop) adminUserDetailsBackdrop.classList.remove("open");
 });
 
 async function loadAdminData() {
@@ -1986,6 +2247,9 @@ async function loadAdminData() {
       adminCfgSitename.value = cfgData.config.site_name || "";
       adminCfgPath.value = cfgData.config.audiobooks_dir || "";
     }
+
+    // Load statistics
+    await loadAdminStats();
 
     // Load users
     const usersRes = await fetch("/api/admin/users");

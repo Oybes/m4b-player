@@ -126,6 +126,11 @@ def init_db():
             cursor.execute("ALTER TABLE users ADD COLUMN can_upload INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass
+    if "total_listened_seconds" not in users_cols:
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN total_listened_seconds REAL NOT NULL DEFAULT 0.0")
+        except Exception:
+            pass
     
     # 3. Sessions table
     cursor.execute("""
@@ -173,6 +178,31 @@ def init_db():
         FOREIGN KEY (book_id) REFERENCES books (id) ON DELETE CASCADE
     )
     """)
+
+    # 5. Listening activity log table (for detailed time tracking)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS listening_activity (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        book_id TEXT NOT NULL,
+        seconds_listened REAL NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (book_id) REFERENCES books (id) ON DELETE CASCADE
+    )
+    """)
+
+    # Safe backfill: populate users.total_listened_seconds from progress table if empty
+    try:
+        cursor.execute("""
+        UPDATE users
+        SET total_listened_seconds = COALESCE((
+            SELECT SUM(position) FROM progress WHERE progress.user_id = users.id
+        ), 0.0)
+        WHERE total_listened_seconds = 0.0 OR total_listened_seconds IS NULL
+        """)
+    except Exception:
+        pass
     
     conn.commit()
     conn.close()
@@ -522,10 +552,24 @@ def get_book_by_id(book_id: str, user_id: Optional[str] = None) -> Optional[Dict
     conn.close()
     return book
 
-def save_progress(user_id: str, book_id: str, position: float, playback_rate: float = 1.0, completed: bool = False):
+def save_progress(user_id: str, book_id: str, position: float, playback_rate: float = 1.0, completed: bool = False, seconds_listened: Optional[float] = None):
     conn = get_db_connection()
     cursor = conn.cursor()
     
+    # Check existing progress to compute incremental delta if seconds_listened not provided
+    if seconds_listened is None:
+        cursor.execute("SELECT position FROM progress WHERE user_id = ? AND book_id = ?", (user_id, book_id))
+        row = cursor.fetchone()
+        if row is not None:
+            prev_pos = float(row["position"] or 0.0)
+            delta = position - prev_pos
+            # Only count forward progress between 0 and 60s as natural listening (not seeking or rewinding)
+            if 0 < delta <= 60.0:
+                seconds_listened = delta
+        else:
+            if 0 < position <= 60.0:
+                seconds_listened = position
+
     cursor.execute("""
     INSERT INTO progress (user_id, book_id, position, playback_rate, completed, last_played_at)
     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -536,6 +580,19 @@ def save_progress(user_id: str, book_id: str, position: float, playback_rate: fl
         last_played_at = CURRENT_TIMESTAMP
     """, (user_id, book_id, position, playback_rate, 1 if completed else 0))
     
+    # Accumulate listening time if delta is positive
+    if seconds_listened and seconds_listened > 0:
+        cursor.execute("""
+        UPDATE users 
+        SET total_listened_seconds = COALESCE(total_listened_seconds, 0.0) + ?
+        WHERE id = ?
+        """, (float(seconds_listened), user_id))
+        
+        cursor.execute("""
+        INSERT INTO listening_activity (user_id, book_id, seconds_listened)
+        VALUES (?, ?, ?)
+        """, (user_id, book_id, float(seconds_listened)))
+        
     conn.commit()
     conn.close()
 
@@ -654,17 +711,131 @@ def get_user_history_and_stats(user_id: str) -> Dict[str, Any]:
     if author_listen_time:
         top_author = max(author_listen_time.items(), key=lambda x: x[1])[0]
         
+    if user:
+        user_saved_total = float(user.get("total_listened_seconds") or 0.0)
+        total_listen_seconds = max(user_saved_total, total_listen_seconds)
+
     conn.close()
     
     return {
         "stats": {
-            "total_listen_seconds": total_listen_seconds,
+            "total_listen_seconds": round(total_listen_seconds, 2),
+            "total_listen_minutes": int(round(total_listen_seconds / 60.0)),
+            "total_listen_hours": round(total_listen_seconds / 3600.0, 1),
             "completed_count": completed_count,
             "in_progress_count": in_progress_count,
             "top_author": top_author,
             "history_count": len(history_items)
         },
         "history": history_items
+    }
+
+def get_all_users_statistics() -> Dict[str, Any]:
+    """Calculates server-wide listening statistics and detailed per-user breakdown for admins."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    SELECT id, username, role, shared_library, can_upload, created_at, COALESCE(total_listened_seconds, 0.0) as total_listened_seconds
+    FROM users
+    ORDER BY created_at ASC
+    """)
+    user_rows = cursor.fetchall()
+    
+    users_stats = []
+    total_server_seconds = 0.0
+    total_server_completed = 0
+    active_users_count = 0
+    
+    for u in user_rows:
+        uid = u["id"]
+        # Progress records for this user
+        cursor.execute("""
+        SELECT 
+            p.book_id, p.position, p.playback_rate, p.completed, p.last_played_at,
+            b.title, b.author, b.duration, b.cover_path, b.series, b.series_sequence
+        FROM progress p
+        JOIN books b ON p.book_id = b.id
+        WHERE p.user_id = ?
+        ORDER BY p.last_played_at DESC
+        """, (uid,))
+        p_rows = cursor.fetchall()
+        
+        user_books = []
+        completed_count = 0
+        in_progress_count = 0
+        sum_positions = 0.0
+        latest_book = None
+        last_played_at = None
+        
+        for idx, pr in enumerate(p_rows):
+            pos = float(pr["position"] or 0.0)
+            dur = float(pr["duration"] or 0.0)
+            comp = bool(pr["completed"])
+            sum_positions += pos
+            
+            if comp:
+                completed_count += 1
+            elif pos >= 120.0:
+                in_progress_count += 1
+                
+            pct = round((pos / dur) * 100) if dur > 0 else 0
+            
+            book_info = {
+                "book_id": pr["book_id"],
+                "title": pr["title"],
+                "author": pr["author"],
+                "series": pr["series"],
+                "series_sequence": pr["series_sequence"],
+                "duration": dur,
+                "position": pos,
+                "percentage": pct,
+                "completed": comp,
+                "last_played_at": pr["last_played_at"],
+                "cover_url": f"/api/books/{pr['book_id']}/cover" if pr["cover_path"] else None
+            }
+            user_books.append(book_info)
+            
+            if idx == 0:
+                latest_book = book_info
+                last_played_at = pr["last_played_at"]
+
+        user_listen_sec = max(float(u["total_listened_seconds"] or 0.0), sum_positions)
+        total_server_seconds += user_listen_sec
+        total_server_completed += completed_count
+        if user_listen_sec > 0 or last_played_at is not None:
+            active_users_count += 1
+            
+        users_stats.append({
+            "id": uid,
+            "username": u["username"],
+            "role": u["role"],
+            "shared_library": bool(u["shared_library"]),
+            "can_upload": bool(u["can_upload"]),
+            "created_at": u["created_at"],
+            "total_listen_seconds": round(user_listen_sec, 2),
+            "total_listen_minutes": int(round(user_listen_sec / 60.0)),
+            "total_listen_hours": round(user_listen_sec / 3600.0, 1),
+            "completed_count": completed_count,
+            "in_progress_count": in_progress_count,
+            "last_played_at": last_played_at,
+            "latest_book": latest_book,
+            "books_count": len(user_books),
+            "books": user_books
+        })
+        
+    conn.close()
+    
+    return {
+        "summary": {
+            "total_server_seconds": round(total_server_seconds, 2),
+            "total_server_minutes": int(round(total_server_seconds / 60.0)),
+            "total_server_hours": round(total_server_seconds / 3600.0, 1),
+            "total_users_count": len(user_rows),
+            "active_users_count": active_users_count,
+            "total_books_completed": total_server_completed
+        },
+        "users": users_stats
     }
 
 def update_book_metadata(

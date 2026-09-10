@@ -71,13 +71,18 @@ Enrich files missing proper chapter names (e.g. *"Chapter 1, Chapter 2"*):
 
 ---
 
-### 📊 Per-User History & Listening Statistics
+### 📊 Listening Statistics & Server Analytics
 - **Personal Statistics Dashboard**:
   - **Total Listening Time** tracked down to the minute.
   - **Books Completed** counter.
   - **In-Progress Audiobooks** (tracks audiobooks with $\ge 2$ minutes of listening time).
   - **Top Author** dynamically calculated based on your listening habits.
 - **Chronological Listening Timeline**: Review your recent listening history with timestamps, completion percentages, and instant resume buttons.
+- **Admin Server-Wide Statistics Dashboard**:
+  - **Server Totals**: Cumulative listening hours and total minutes across all users, total completed audiobooks, and active listener counts.
+  - **Per-User Breakdown Table**: Shows each user's total hours/minutes listened badge, completed count, in-progress count, current audiobook with real-time percentage progress bar, and last active timestamp.
+  - **User History Inspector**: Drill down into any user's listening log with 1 click to inspect all audiobooks they've listened to, completion statuses, and timestamps.
+  - **Continuous Playback Delta Engine**: Accurately counts real listening time across resets and re-listens without counting skips or scrubbing jumps. Automatically backfills historical progress.
 
 ---
 

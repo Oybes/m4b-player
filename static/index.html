@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="apple-touch-icon" sizes="512x512" href="/static/icon-512.png">
   <link rel="manifest" href="/static/manifest.json">
-  <link rel="stylesheet" href="/static/style.css?v=2.9">
+  <link rel="stylesheet" href="/static/style.css?v=3.0">
 </head>
 <body>
 
@@ -709,82 +709,212 @@
 
   <!-- ADMIN MANAGEMENT MODAL -->
   <div id="admin-backdrop" class="modal-backdrop">
-    <div class="modal" style="max-width: 600px;">
+    <div class="modal" style="max-width: 820px; width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
       <div class="modal-header">
         <div>
           <h3 class="modal-title">Admin Management</h3>
-          <p class="modal-subtitle">Users & Server Configuration</p>
+          <p class="modal-subtitle">User Statistics, Accounts & Server Configuration</p>
         </div>
         <button id="admin-close" class="drawer-close">&times;</button>
       </div>
-      <div class="modal-body">
-        <h4 style="font-size: 0.95rem; margin-bottom: 8px;">Manage Users</h4>
-        
-        <!-- Add User Form -->
-        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; background: var(--bg-primary); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);">
-          <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Create User Account</div>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <input type="text" id="admin-new-user" class="form-input" placeholder="New username" style="flex: 1; min-width: 120px;">
-            <input type="password" id="admin-new-pass" class="form-input" placeholder="Password" style="flex: 1; min-width: 120px;">
-            <select id="admin-new-role" class="form-input" style="width: 90px;">
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-            </select>
+
+      <!-- Admin Modal Navigation Tabs -->
+      <div class="admin-tabs-nav">
+        <button id="admin-tab-btn-stats" class="admin-tab-btn active" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          <span>Listening Statistics</span>
+        </button>
+        <button id="admin-tab-btn-users" class="admin-tab-btn" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+          <span>Manage Users</span>
+        </button>
+        <button id="admin-tab-btn-settings" class="admin-tab-btn" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span>Server Settings</span>
+        </button>
+      </div>
+
+      <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 18px 22px;">
+        <!-- TAB 1: LISTENING STATISTICS -->
+        <div id="admin-view-stats" class="admin-tab-view">
+          <div class="admin-stats-summary-grid">
+            <div class="admin-stat-card">
+              <div class="admin-stat-icon-box" style="background: rgba(56, 189, 248, 0.15); color: var(--accent);">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </div>
+              <div>
+                <div class="admin-stat-label">Total Listening Time</div>
+                <div id="admin-stat-total-time" class="admin-stat-value">0h 0m</div>
+                <div id="admin-stat-total-minutes" class="admin-stat-sub">0 total minutes</div>
+              </div>
+            </div>
+
+            <div class="admin-stat-card">
+              <div class="admin-stat-icon-box" style="background: rgba(34, 197, 94, 0.15); color: #22c55e;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+              </div>
+              <div>
+                <div class="admin-stat-label">Books Completed</div>
+                <div id="admin-stat-total-completed" class="admin-stat-value">0</div>
+                <div class="admin-stat-sub">across all users</div>
+              </div>
+            </div>
+
+            <div class="admin-stat-card">
+              <div class="admin-stat-icon-box" style="background: rgba(168, 85, 247, 0.15); color: #a855f7;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+              </div>
+              <div>
+                <div class="admin-stat-label">Active Listeners</div>
+                <div id="admin-stat-active-users" class="admin-stat-value">0</div>
+                <div id="admin-stat-total-users" class="admin-stat-sub">0 total registered</div>
+              </div>
+            </div>
           </div>
-          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 0.8rem;">
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <label style="color: var(--text-muted); font-size: 0.78rem;">Library Access:</label>
-              <select id="admin-new-access" class="form-input" style="padding: 4px 8px; font-size: 0.78rem;">
-                <option value="shared">Shared Library (All Books)</option>
-                <option value="personal">Personal Only (Only Uploads)</option>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; margin-bottom: 12px;">
+            <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">Per-User Listening Breakdown</h4>
+            <span id="admin-users-stats-count" style="font-size: 0.8rem; color: var(--text-muted);">0 users</span>
+          </div>
+
+          <div class="admin-stats-table-wrapper">
+            <table class="admin-stats-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Total Time Listened</th>
+                  <th>Completed</th>
+                  <th>In Progress</th>
+                  <th>Current / Latest Book</th>
+                  <th>Last Active</th>
+                  <th style="text-align: right;">History</th>
+                </tr>
+              </thead>
+              <tbody id="admin-stats-table-body">
+                <!-- User stat rows populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TAB 2: MANAGE USERS -->
+        <div id="admin-view-users" class="admin-tab-view" style="display: none;">
+          <!-- Add User Form -->
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; background: var(--bg-primary); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);">
+            <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Create User Account</div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <input type="text" id="admin-new-user" class="form-input" placeholder="New username" style="flex: 1; min-width: 120px;">
+              <input type="password" id="admin-new-pass" class="form-input" placeholder="Password" style="flex: 1; min-width: 120px;">
+              <select id="admin-new-role" class="form-input" style="width: 90px;">
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
               </select>
             </div>
-            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; color: var(--text-primary);">
-              <input type="checkbox" id="admin-new-can-upload">
-              <span>Allow Uploads</span>
-            </label>
-            <button id="btn-admin-add-user" class="btn-primary" style="padding: 5px 14px; font-size: 0.8rem; margin-left: auto;">Add User</button>
-          </div>
-        </div>
-
-        <div id="admin-user-list" style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 4px;">
-          <!-- User rows rendered dynamically -->
-        </div>
-
-        <h4 style="font-size: 0.95rem; margin-top: 18px; margin-bottom: 8px;">Server Configuration</h4>
-        <div class="form-group">
-          <label class="form-label">Site Title</label>
-          <input type="text" id="admin-cfg-sitename" class="form-input">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Audiobooks Directory</label>
-          <input type="text" id="admin-cfg-path" class="form-input">
-        </div>
-        <button id="btn-admin-save-cfg" class="btn-secondary" style="margin-top: 8px; align-self: flex-start;">Save Configuration</button>
-
-        <!-- Database Maintenance & Reset -->
-        <div style="margin-top: 20px; padding: 14px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.04);">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <div style="font-weight: 600; font-size: 0.88rem; color: #f87171; display: flex; align-items: center; gap: 6px;">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-              <span>Library Database Maintenance</span>
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 0.8rem;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <label style="color: var(--text-muted); font-size: 0.78rem;">Library Access:</label>
+                <select id="admin-new-access" class="form-input" style="padding: 4px 8px; font-size: 0.78rem;">
+                  <option value="shared">Shared Library (All Books)</option>
+                  <option value="personal">Personal Only (Only Uploads)</option>
+                </select>
+              </div>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; color: var(--text-primary);">
+                <input type="checkbox" id="admin-new-can-upload">
+                <span>Allow Uploads</span>
+              </label>
+              <button id="btn-admin-add-user" class="btn-primary" style="padding: 5px 14px; font-size: 0.8rem; margin-left: auto;">Add User</button>
             </div>
           </div>
-          <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
-            Clears all audiobooks, chapter customizations, listening progress, and cached covers to give you a clean fresh start. User accounts and server configurations are preserved.
-          </p>
-          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; font-size: 0.78rem; color: var(--text-secondary);">
-              <input type="checkbox" id="admin-rebuild-rescan" checked>
-              <span>Rescan audiobooks directory after clearing</span>
-            </label>
-            <button id="btn-admin-rebuild-db" class="btn-secondary" style="border-color: #ef4444; color: #f87171; font-size: 0.8rem; padding: 6px 12px;">
-              Rebuild Database & Rescan
-            </button>
+
+          <div id="admin-user-list" style="max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 4px;">
+            <!-- User rows rendered dynamically -->
           </div>
         </div>
+
+        <!-- TAB 3: SERVER SETTINGS -->
+        <div id="admin-view-settings" class="admin-tab-view" style="display: none;">
+          <h4 style="font-size: 0.95rem; margin-bottom: 8px;">Server Configuration</h4>
+          <div class="form-group">
+            <label class="form-label">Site Title</label>
+            <input type="text" id="admin-cfg-sitename" class="form-input">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Audiobooks Directory</label>
+            <input type="text" id="admin-cfg-path" class="form-input">
+          </div>
+          <button id="btn-admin-save-cfg" class="btn-secondary" style="margin-top: 8px; align-self: flex-start;">Save Configuration</button>
+
+          <!-- Database Maintenance & Reset -->
+          <div style="margin-top: 20px; padding: 14px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.04);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <div style="font-weight: 600; font-size: 0.88rem; color: #f87171; display: flex; align-items: center; gap: 6px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>Library Database Maintenance</span>
+              </div>
+            </div>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
+              Clears all audiobooks, chapter customizations, listening progress, and cached covers to give you a clean fresh start. User accounts and server configurations are preserved.
+            </p>
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; font-size: 0.78rem; color: var(--text-secondary);">
+                <input type="checkbox" id="admin-rebuild-rescan" checked>
+                <span>Rescan audiobooks directory after clearing</span>
+              </label>
+              <button id="btn-admin-rebuild-db" class="btn-secondary" style="border-color: #ef4444; color: #f87171; font-size: 0.8rem; padding: 6px 12px;">
+                Rebuild Database & Rescan
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN USER DETAIL MODAL (Inspect a single user's audiobooks) -->
+  <div id="admin-user-details-backdrop" class="modal-backdrop">
+    <div class="modal" style="max-width: 600px; max-height: 85vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div>
+          <h3 id="admin-user-detail-name" class="modal-title">User Listening History</h3>
+          <p id="admin-user-detail-summary" class="modal-subtitle">Audiobooks and progress breakdown</p>
+        </div>
+        <button id="admin-user-detail-close" class="drawer-close">&times;</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 16px; gap: 10px;">
+        <div id="admin-user-detail-book-list" class="history-timeline-list">
+          <!-- Rendered dynamically -->
+        </div>
+        <div id="admin-user-detail-empty" style="display: none; text-align: center; padding: 32px 16px; color: var(--text-muted);">
+          No listening activity recorded for this user yet.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="admin-user-detail-close-btn" class="btn-secondary">Close</button>
       </div>
     </div>
   </div>
@@ -854,6 +984,6 @@
 
   <datalist id="existing-series-list"></datalist>
 
-  <script src="/static/app.js?v=2.9"></script>
+  <script src="/static/app.js?v=3.0"></script>
 </body>
 </html>

@@ -100,6 +100,7 @@ class ProgressPayload(BaseModel):
     position: float
     playback_rate: Optional[float] = 1.0
     completed: Optional[bool] = False
+    seconds_listened: Optional[float] = None
 
 class EnrichChaptersPayload(BaseModel):
     titles: Optional[List[str]] = None
@@ -287,6 +288,11 @@ def rebuild_database(background_tasks: BackgroundTasks, rescan: bool = True, adm
         "message": "Library database cleared. Audiobooks and progress have been reset."
     }
 
+@app.get("/api/admin/stats")
+def get_admin_user_stats(admin: Dict[str, Any] = Depends(require_admin)):
+    """Return comprehensive server-wide and per-user listening statistics."""
+    return database.get_all_users_statistics()
+
 
 # Library & Audio Streaming Endpoints
 @app.get("/api/books")
@@ -362,7 +368,8 @@ def update_progress(book_id: str, payload: ProgressPayload, user: Dict[str, Any]
         book_id=book_id,
         position=payload.position,
         playback_rate=payload.playback_rate or 1.0,
-        completed=bool(payload.completed)
+        completed=bool(payload.completed),
+        seconds_listened=payload.seconds_listened
     )
     return {"status": "ok"}
 
