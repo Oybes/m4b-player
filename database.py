@@ -417,8 +417,8 @@ def get_all_books(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     user = get_user_by_id(user_id) if user_id else None
     
     if user:
-        if user["role"] == "admin":
-            # Admin can see all audiobooks
+        if user["role"] == "admin" or user["shared_library"]:
+            # Admin or Shared Library users can see all audiobooks
             cursor.execute("""
             SELECT 
                 b.id, b.title, b.author, b.narrator, b.duration, b.file_size, b.cover_path, b.uploaded_by, b.series, b.series_sequence, b.publish_year, b.publisher, b.genres, b.description, b.updated_at,
@@ -427,17 +427,6 @@ def get_all_books(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
             LEFT JOIN progress p ON (b.id = p.book_id AND p.user_id = ?)
             ORDER BY COALESCE(p.last_played_at, b.updated_at) DESC
             """, (user_id,))
-        elif user["shared_library"]:
-            # Shared library books + user's own uploads
-            cursor.execute("""
-            SELECT 
-                b.id, b.title, b.author, b.narrator, b.duration, b.file_size, b.cover_path, b.uploaded_by, b.series, b.series_sequence, b.publish_year, b.publisher, b.genres, b.description, b.updated_at,
-                p.position, p.playback_rate, p.completed, p.last_played_at
-            FROM books b
-            LEFT JOIN progress p ON (b.id = p.book_id AND p.user_id = ?)
-            WHERE b.uploaded_by IS NULL OR b.uploaded_by = ?
-            ORDER BY COALESCE(p.last_played_at, b.updated_at) DESC
-            """, (user_id, user_id))
         else:
             # Personal uploads only
             cursor.execute("""
@@ -455,7 +444,6 @@ def get_all_books(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
             b.id, b.title, b.author, b.narrator, b.duration, b.file_size, b.cover_path, b.uploaded_by, b.series, b.series_sequence, b.publish_year, b.publisher, b.genres, b.description, b.updated_at,
             0.0 as position, 1.0 as playback_rate, 0 as completed, NULL as last_played_at
         FROM books b
-        WHERE b.uploaded_by IS NULL
         ORDER BY b.updated_at DESC
         """)
     
@@ -512,9 +500,6 @@ def get_book_by_id(book_id: str, user_id: Optional[str] = None) -> Optional[Dict
     # Permission verification
     if user and user["role"] != "admin":
         if not user["shared_library"] and row["uploaded_by"] != user_id:
-            conn.close()
-            return None
-        if user["shared_library"] and row["uploaded_by"] is not None and row["uploaded_by"] != user_id:
             conn.close()
             return None
             
@@ -674,8 +659,6 @@ def get_user_history_and_stats(user_id: str) -> Dict[str, Any]:
         # Permission check if user has personal library only
         if user and user["role"] != "admin":
             if not user["shared_library"] and r["uploaded_by"] != user_id:
-                continue
-            if user["shared_library"] and r["uploaded_by"] is not None and r["uploaded_by"] != user_id:
                 continue
                 
         pos = float(r["position"] or 0.0)
@@ -906,7 +889,7 @@ def get_all_series(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     user = get_user_by_id(user_id) if user_id else None
     
     if user:
-        if user["role"] == "admin":
+        if user["role"] == "admin" or user["shared_library"]:
             cursor.execute("""
             SELECT series, COUNT(*) as count 
             FROM books 
@@ -914,14 +897,6 @@ def get_all_series(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
             GROUP BY series 
             ORDER BY series COLLATE NOCASE ASC
             """)
-        elif user["shared_library"]:
-            cursor.execute("""
-            SELECT series, COUNT(*) as count 
-            FROM books 
-            WHERE (uploaded_by IS NULL OR uploaded_by = ?) AND series IS NOT NULL AND TRIM(series) != '' 
-            GROUP BY series 
-            ORDER BY series COLLATE NOCASE ASC
-            """, (user_id,))
         else:
             cursor.execute("""
             SELECT series, COUNT(*) as count 
@@ -934,7 +909,7 @@ def get_all_series(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         cursor.execute("""
         SELECT series, COUNT(*) as count 
         FROM books 
-        WHERE uploaded_by IS NULL AND series IS NOT NULL AND TRIM(series) != '' 
+        WHERE series IS NOT NULL AND TRIM(series) != '' 
         GROUP BY series 
         ORDER BY series COLLATE NOCASE ASC
         """)
